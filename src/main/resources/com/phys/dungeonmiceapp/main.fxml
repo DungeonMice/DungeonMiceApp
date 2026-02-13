@@ -3,52 +3,105 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 <?import javafx.geometry.Insets?>
+<?import javafx.scene.media.MediaView?>
 
 <BorderPane xmlns="http://javafx.com/javafx/11"
             xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="com.phys.dungeonmiceapp.MainController"
+            fx:controller="com.phys.dungeonmiceapp.controller.MainController"
             stylesheets="@style.css">
 
-    <!-- TOP BAR -->
+    <!-- ===================== TOP BAR ===================== -->
     <top>
-        <HBox spacing="10" styleClass="top-bar">
-            <Label text="Dungeon Mice"
-                   styleClass="title-label"/>
-            <Label text="Análisis de comportamiento"
-                   styleClass="subtitle-label"/>
-        </HBox>
+        <VBox styleClass="top-container">
+            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="top-bar">
+                <Label text="Dungeon Mice"
+                       styleClass="title-label"/>
+                <Separator orientation="VERTICAL"/>
+                <Label text="Plataforma de análisis conductual"
+                       styleClass="subtitle-label"/>
+            </HBox>
+        </VBox>
     </top>
 
-    <!-- LEFT PANEL -->
+    <!-- ===================== LEFT PANEL ===================== -->
     <left>
-        <VBox spacing="10" styleClass="side-panel">
-            <Label text="Sujetos" styleClass="section-title"/>
-            <ListView fx:id="ratsList"/>
-            <Button text="➕ Agregar rata" />
+        <VBox spacing="15" styleClass="side-panel">
+            <padding>
+                <Insets top="15" right="15" bottom="15" left="15"/>
+            </padding>
+
+            <Label text="Sujetos registrados"
+                   styleClass="section-title"/>
+
+            <ListView fx:id="ratsList"
+                      VBox.vgrow="ALWAYS"/>
+
+            <HBox spacing="10">
+                <Button text="➕ Agregar"
+                        styleClass="secondary-button"
+                        HBox.hgrow="ALWAYS"
+                        maxWidth="Infinity"/>
+
+                <Button text="🗑 Eliminar"
+                        styleClass="danger-button"
+                        HBox.hgrow="ALWAYS"
+                        maxWidth="Infinity"/>
+            </HBox>
         </VBox>
     </left>
 
-    <!-- CENTER CONTENT -->
+    <!-- ===================== CENTER CONTENT ===================== -->
     <center>
-        <VBox spacing="15">
-            <Label text="Resumen del sujeto"
+        <VBox spacing="20" styleClass="content-area">
+            <padding>
+                <Insets top="20" right="30" bottom="20" left="30"/>
+            </padding>
+            <Button text="📂 Cargar Video"
+                    fx:id="loadVideoButton"/>
+
+            <!-- ================= VIDEO PLAYER SECTION ================= -->
+            <Label text="Reproductor de video"
                    styleClass="section-title"/>
+            
+            <!-- VIDEO CONTAINER -->
+            <StackPane styleClass="video-container"
+                       prefHeight="500"
+                       VBox.vgrow="ALWAYS">
 
-            <GridPane hgap="10" vgap="10">
-                <Label text="ID:"/>
-                <TextField fx:id="idField"/>
+                <!-- MediaView -->
+                <MediaView fx:id="mediaView"
+                           preserveRatio="true"
+                           fitWidth="900"/>
 
-                <Label text="Peso (g):" GridPane.rowIndex="1"/>
-                <TextField fx:id="weightField" GridPane.rowIndex="1"/>
+                <!-- Futuro overlay para tracking -->
+                <!-- Podrás agregar un Canvas aquí después -->
 
-                <Label text="Actividad:" GridPane.rowIndex="2"/>
-                <ProgressBar fx:id="activityBar"
-                             progress="0.6"
-                             GridPane.rowIndex="2"/>
-            </GridPane>
+            </StackPane>
 
-            <Button text="💾 Guardar análisis"
-                    styleClass="primary-button"/>
+            <!-- ================= CONTROLS ================= -->
+            <HBox spacing="15"
+                  alignment="CENTER_LEFT"
+                  styleClass="controls-bar">
+
+                <Button text="▶"
+                        fx:id="playButton"
+                        prefWidth="50"/>
+
+                <Button text="⏸"
+                        fx:id="pauseButton"
+                        prefWidth="50"/>
+
+                <Button text="⏹"
+                        fx:id="stopButton"
+                        prefWidth="50"/>
+
+                <Slider fx:id="timeSlider"
+                        HBox.hgrow="ALWAYS"/>
+
+                <Label fx:id="timeLabel"
+                       text="00:00 / 00:00"/>
+            </HBox>
+
         </VBox>
     </center>
 
