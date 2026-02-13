@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/11"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.phys.dungeonmiceapp.MainController"
+            stylesheets="@style.css">
+
+    <!-- TOP BAR -->
+    <top>
+        <HBox spacing="10" styleClass="top-bar">
+            <Label text="Dungeon Mice"
+                   styleClass="title-label"/>
+            <Label text="Análisis de comportamiento"
+                   styleClass="subtitle-label"/>
+        </HBox>
+    </top>
+
+    <!-- LEFT PANEL -->
+    <left>
+        <VBox spacing="10" styleClass="side-panel">
+            <Label text="Sujetos" styleClass="section-title"/>
+            <ListView fx:id="ratsList"/>
+            <Button text="➕ Agregar rata" />
+        </VBox>
+    </left>
+
+    <!-- CENTER CONTENT -->
+    <center>
+        <VBox spacing="15">
+            <Label text="Resumen del sujeto"
+                   styleClass="section-title"/>
+
+            <GridPane hgap="10" vgap="10">
+                <Label text="ID:"/>
+                <TextField fx:id="idField"/>
+
+                <Label text="Peso (g):" GridPane.rowIndex="1"/>
+                <TextField fx:id="weightField" GridPane.rowIndex="1"/>
+
+                <Label text="Actividad:" GridPane.rowIndex="2"/>
+                <ProgressBar fx:id="activityBar"
+                             progress="0.6"
+                             GridPane.rowIndex="2"/>
+            </GridPane>
+
+            <Button text="💾 Guardar análisis"
+                    styleClass="primary-button"/>
+        </VBox>
+    </center>
+
+</BorderPane>
