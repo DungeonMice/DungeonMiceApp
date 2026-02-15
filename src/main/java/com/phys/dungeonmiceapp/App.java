@@ -25,6 +25,8 @@ public class App extends Application {
         stage.getIcons().add(image);
         stage.setTitle("Dungeon Mice");
         stage.setScene(scene);
+        stage.setMinWidth(1400);
+        stage.setMinHeight(900);
         stage.show();
     }
 
