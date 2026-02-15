@@ -27,11 +27,18 @@ public class MainController implements Initializable {
     @FXML private Button loadVideoButton;
     @FXML private Slider timeSlider;
     @FXML private Label timeLabel;
+    @FXML private Slider volumeSlider;
 
     private MediaPlayer mediaPlayer;
 
     @Override
     public void initialize(URL url, ResourceBundle rb) {
+
+        volumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            if (mediaPlayer != null) {
+                mediaPlayer.setVolume(newVal.doubleValue() / 100.0);
+            }
+        });
 
         playButton.setOnAction(e -> {
             if (mediaPlayer != null) {
@@ -81,6 +88,9 @@ public class MainController implements Initializable {
         Media media = new Media(file.toURI().toString());
         mediaPlayer = new MediaPlayer(media);
         mediaView.setMediaPlayer(mediaPlayer);
+
+        // Sincronizar volumen inicial
+        mediaPlayer.setVolume(volumeSlider.getValue());
 
         mediaPlayer.setOnReady(() -> {
 
