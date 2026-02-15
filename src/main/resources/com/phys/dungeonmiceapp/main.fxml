@@ -8,7 +8,7 @@
 <BorderPane xmlns="http://javafx.com/javafx/11"
             xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="com.phys.dungeonmiceapp.controller.MainController"
-            stylesheets="@style.css">
+            stylesheets="@styles/main.css">
 
     <!-- ===================== TOP BAR ===================== -->
     <top>
@@ -16,7 +16,6 @@
             <HBox alignment="CENTER_LEFT" spacing="15" styleClass="top-bar">
                 <Label text="Dungeon Mice"
                        styleClass="title-label"/>
-                <Separator orientation="VERTICAL"/>
                 <Label text="Plataforma de análisis conductual"
                        styleClass="subtitle-label"/>
             </HBox>
@@ -25,9 +24,9 @@
 
     <!-- ===================== LEFT PANEL ===================== -->
     <left>
-        <VBox spacing="15" styleClass="side-panel">
+        <VBox spacing="20" styleClass="side-panel">
             <padding>
-                <Insets top="15" right="15" bottom="15" left="15"/>
+                <Insets top="20" right="15" bottom="20" left="15"/>
             </padding>
 
             <Label text="Sujetos registrados"
@@ -52,29 +51,33 @@
 
     <!-- ===================== CENTER CONTENT ===================== -->
     <center>
-        <VBox spacing="20" styleClass="content-area">
+        <VBox spacing="25" styleClass="content-area">
             <padding>
-                <Insets top="20" right="30" bottom="20" left="30"/>
+                <Insets top="25" right="40" bottom="25" left="40"/>
             </padding>
+
+            <!-- Botón cargar video -->
             <Button text="📂 Cargar Video"
-                    fx:id="loadVideoButton"/>
+                    fx:id="loadVideoButton"
+                    styleClass="secondary-button"
+                    prefHeight="40"
+                    maxWidth="250"/>
 
             <!-- ================= VIDEO PLAYER SECTION ================= -->
             <Label text="Reproductor de video"
                    styleClass="section-title"/>
-            
+
             <!-- VIDEO CONTAINER -->
             <StackPane styleClass="video-container"
-                       prefHeight="500"
+                       prefHeight="520"
                        VBox.vgrow="ALWAYS">
 
                 <!-- MediaView -->
                 <MediaView fx:id="mediaView"
                            preserveRatio="true"
-                           fitWidth="900"/>
+                           StackPane.alignment="CENTER"/>
 
-                <!-- Futuro overlay para tracking -->
-                <!-- Podrás agregar un Canvas aquí después -->
+                <!-- Aquí irá el Canvas para tracking en el futuro -->
 
             </StackPane>
 
@@ -101,7 +104,7 @@
                 <Label fx:id="timeLabel"
                        text="00:00 / 00:00"/>
 
-                <!-- 🔊 Volumen -->
+                <!-- Volumen -->
                 <Label text="🔊"/>
 
                 <Slider fx:id="volumeSlider"

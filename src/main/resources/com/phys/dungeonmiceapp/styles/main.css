@@ -1,0 +1,132 @@
+/* ================= ROOT ================= */
+.root {
+    -fx-font-family: "Segoe UI", "Roboto", sans-serif;
+    -fx-background-color: #0f172a; /* azul oscuro profundo */
+}
+
+/* ================= TOP BAR ================= */
+.top-container {
+    -fx-background-color: linear-gradient(to right, #0f172a, #1e293b);
+    -fx-padding: 0 0 5 0;
+}
+
+.top-bar {
+    -fx-padding: 18 25;
+    -fx-background-color: transparent;
+}
+
+.title-label {
+    -fx-text-fill: white;
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+}
+
+.subtitle-label {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 13px;
+}
+
+/* ================= SIDE PANEL ================= */
+.side-panel {
+    -fx-background-color: #111827;
+    -fx-pref-width: 240;
+    -fx-spacing: 15;
+}
+
+.section-title {
+    -fx-text-fill: #e5e7eb;
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+}
+
+/* ================= LIST VIEW ================= */
+.list-view {
+    -fx-background-color: #1f2937;
+    -fx-control-inner-background: #1f2937;
+    -fx-border-color: transparent;
+    -fx-background-radius: 8;
+}
+
+.list-cell {
+    -fx-text-fill: #e5e7eb;
+    -fx-background-color: transparent;
+}
+
+.list-cell:selected {
+    -fx-background-color: #2563eb;
+    -fx-text-fill: white;
+}
+
+/* ================= VIDEO CONTAINER ================= */
+.video-container {
+    -fx-background-color: #000000;
+    -fx-background-radius: 15;
+    -fx-padding: 10;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.6), 25, 0.3, 0, 8);
+}
+
+/* ================= CONTENT AREA ================= */
+.content-area {
+    -fx-background-color: #0f172a;
+}
+
+/* ================= CONTROLS BAR ================= */
+.controls-bar {
+    -fx-background-color: #1e293b;
+    -fx-padding: 15;
+    -fx-background-radius: 12;
+    -fx-alignment: CENTER_LEFT;
+}
+
+/* ================= BUTTONS ================= */
+.button {
+    -fx-background-color: #334155;
+    -fx-text-fill: white;
+    -fx-background-radius: 8;
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-background-color: #475569;
+}
+
+.button:pressed {
+    -fx-background-color: #1e293b;
+}
+
+/* Primary button (ej: cargar video) */
+.secondary-button {
+    -fx-background-color: #2563eb;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+.secondary-button:hover {
+    -fx-background-color: #1d4ed8;
+}
+
+/* Danger button */
+.danger-button {
+    -fx-background-color: #dc2626;
+    -fx-text-fill: white;
+}
+
+.danger-button:hover {
+    -fx-background-color: #b91c1c;
+}
+
+/* ================= SLIDER ================= */
+.slider .track {
+    -fx-background-color: #334155;
+    -fx-background-radius: 5;
+}
+
+.slider .thumb {
+    -fx-background-color: #2563eb;
+    -fx-background-radius: 50%;
+}
+
+/* ================= LABELS ================= */
+.label {
+    -fx-text-fill: #e2e8f0;
+}
