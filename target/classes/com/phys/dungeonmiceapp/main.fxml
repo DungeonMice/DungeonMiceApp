@@ -100,6 +100,16 @@
 
                 <Label fx:id="timeLabel"
                        text="00:00 / 00:00"/>
+
+                <!-- 🔊 Volumen -->
+                <Label text="🔊"/>
+
+                <Slider fx:id="volumeSlider"
+                        prefWidth="120"
+                        min="0"
+                        max="100"
+                        value="50"/>
+
             </HBox>
 
         </VBox>
