@@ -38,6 +38,9 @@
     -fx-font-size: 15px;
     -fx-font-weight: bold;
 }
+.side-panel {
+    -fx-background-color: #1e1e1e;
+}
 
 /* ================= LIST VIEW ================= */
 .list-view {
@@ -129,4 +132,137 @@
 /* ================= LABELS ================= */
 .label {
     -fx-text-fill: #e2e8f0;
+}
+
+/* ================= LOGIN ================= */
+
+.login-root {
+    -fx-background-color: linear-gradient(to bottom right, #1f2933, #111827);
+}
+
+.login-card {
+    -fx-background-color: #1f2933;
+    -fx-background-radius: 12;
+    -fx-padding: 40;
+    -fx-spacing: 20;
+    -fx-max-width: 380;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 20, 0.3, 0, 5);
+}
+
+.login-title {
+    -fx-text-fill: white;
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+}
+
+.login-subtitle {
+    -fx-text-fill: #9ca3af;
+    -fx-font-size: 13px;
+}
+
+.text-field,
+.password-field {
+    -fx-background-color: #111827;
+    -fx-text-fill: white;
+    -fx-background-radius: 8;
+    -fx-padding: 10 12;
+    -fx-border-color: #374151;
+    -fx-border-radius: 8;
+}
+
+.text-field:focused,
+.password-field:focused {
+    -fx-border-color: #2563eb;
+}
+
+.login-button {
+    -fx-background-color: #2563eb;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8;
+    -fx-pref-height: 40;
+}
+
+.login-button:hover {
+    -fx-background-color: #1d4ed8;
+}
+
+.error-label {
+    -fx-text-fill: #ef4444;
+    -fx-font-size: 12px;
+}
+
+.logout-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #ff6b6b;
+    -fx-border-color: #ff6b6b;
+    -fx-border-radius: 5;
+}
+
+
+/* ================= GROUP SELECTION ================= */
+.top-container {
+    -fx-background-color: #1e1e1e;
+}
+
+.top-bar {
+    -fx-padding: 20;
+}
+
+.title-label {
+    -fx-text-fill: white;
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+}
+
+.subtitle-label {
+    -fx-text-fill: #bbbbbb;
+    -fx-font-size: 14px;
+}
+
+.content-area {
+    -fx-background-color: #2b2b2b;
+}
+
+.section-title {
+    -fx-text-fill: white;
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+}
+
+.primary-button {
+    -fx-background-color: #4CAF50;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+.secondary-button {
+    -fx-background-color: #3a3a3a;
+    -fx-text-fill: white;
+}
+
+.danger-button {
+    -fx-background-color: #b33939;
+    -fx-text-fill: white;
+}
+
+/* ================= DIALOG OSCURO ================= */
+
+.dark-dialog {
+    -fx-background-color: #2b2b2b;
+}
+
+.dark-dialog .header-panel {
+    -fx-background-color: #1e1e1e;
+}
+
+.dark-dialog .label {
+    -fx-text-fill: white;
+}
+
+.dialog-text-field {
+    -fx-background-color: #3a3a3a;
+    -fx-text-fill: white;
+    -fx-prompt-text-fill: #aaaaaa;
+    -fx-background-radius: 5;
 }

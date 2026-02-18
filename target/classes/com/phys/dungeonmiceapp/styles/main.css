@@ -1,0 +1,268 @@
+/* ================= ROOT ================= */
+.root {
+    -fx-font-family: "Segoe UI", "Roboto", sans-serif;
+    -fx-background-color: #0f172a; /* azul oscuro profundo */
+}
+
+/* ================= TOP BAR ================= */
+.top-container {
+    -fx-background-color: linear-gradient(to right, #0f172a, #1e293b);
+    -fx-padding: 0 0 5 0;
+}
+
+.top-bar {
+    -fx-padding: 18 25;
+    -fx-background-color: transparent;
+}
+
+.title-label {
+    -fx-text-fill: white;
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+}
+
+.subtitle-label {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 13px;
+}
+
+/* ================= SIDE PANEL ================= */
+.side-panel {
+    -fx-background-color: #111827;
+    -fx-pref-width: 240;
+    -fx-spacing: 15;
+}
+
+.section-title {
+    -fx-text-fill: #e5e7eb;
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+}
+.side-panel {
+    -fx-background-color: #1e1e1e;
+}
+
+/* ================= LIST VIEW ================= */
+.list-view {
+    -fx-background-color: #1f2937;
+    -fx-control-inner-background: #1f2937;
+    -fx-border-color: transparent;
+    -fx-background-radius: 8;
+}
+
+.list-cell {
+    -fx-text-fill: #e5e7eb;
+    -fx-background-color: transparent;
+}
+
+.list-cell:selected {
+    -fx-background-color: #2563eb;
+    -fx-text-fill: white;
+}
+
+/* ================= VIDEO CONTAINER ================= */
+.video-container {
+    -fx-background-color: #000000;
+    -fx-background-radius: 15;
+    -fx-padding: 10;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.6), 25, 0.3, 0, 8);
+}
+
+/* ================= CONTENT AREA ================= */
+.content-area {
+    -fx-background-color: #0f172a;
+}
+
+/* ================= CONTROLS BAR ================= */
+.controls-bar {
+    -fx-background-color: #1e293b;
+    -fx-padding: 15;
+    -fx-background-radius: 12;
+    -fx-alignment: CENTER_LEFT;
+}
+
+/* ================= BUTTONS ================= */
+.button {
+    -fx-background-color: #334155;
+    -fx-text-fill: white;
+    -fx-background-radius: 8;
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-background-color: #475569;
+}
+
+.button:pressed {
+    -fx-background-color: #1e293b;
+}
+
+/* Primary button (ej: cargar video) */
+.secondary-button {
+    -fx-background-color: #2563eb;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+.secondary-button:hover {
+    -fx-background-color: #1d4ed8;
+}
+
+/* Danger button */
+.danger-button {
+    -fx-background-color: #dc2626;
+    -fx-text-fill: white;
+}
+
+.danger-button:hover {
+    -fx-background-color: #b91c1c;
+}
+
+/* ================= SLIDER ================= */
+.slider .track {
+    -fx-background-color: #334155;
+    -fx-background-radius: 5;
+}
+
+.slider .thumb {
+    -fx-background-color: #2563eb;
+    -fx-background-radius: 50%;
+}
+
+/* ================= LABELS ================= */
+.label {
+    -fx-text-fill: #e2e8f0;
+}
+
+/* ================= LOGIN ================= */
+
+.login-root {
+    -fx-background-color: linear-gradient(to bottom right, #1f2933, #111827);
+}
+
+.login-card {
+    -fx-background-color: #1f2933;
+    -fx-background-radius: 12;
+    -fx-padding: 40;
+    -fx-spacing: 20;
+    -fx-max-width: 380;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 20, 0.3, 0, 5);
+}
+
+.login-title {
+    -fx-text-fill: white;
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+}
+
+.login-subtitle {
+    -fx-text-fill: #9ca3af;
+    -fx-font-size: 13px;
+}
+
+.text-field,
+.password-field {
+    -fx-background-color: #111827;
+    -fx-text-fill: white;
+    -fx-background-radius: 8;
+    -fx-padding: 10 12;
+    -fx-border-color: #374151;
+    -fx-border-radius: 8;
+}
+
+.text-field:focused,
+.password-field:focused {
+    -fx-border-color: #2563eb;
+}
+
+.login-button {
+    -fx-background-color: #2563eb;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 8;
+    -fx-pref-height: 40;
+}
+
+.login-button:hover {
+    -fx-background-color: #1d4ed8;
+}
+
+.error-label {
+    -fx-text-fill: #ef4444;
+    -fx-font-size: 12px;
+}
+
+.logout-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #ff6b6b;
+    -fx-border-color: #ff6b6b;
+    -fx-border-radius: 5;
+}
+
+
+/* ================= GROUP SELECTION ================= */
+.top-container {
+    -fx-background-color: #1e1e1e;
+}
+
+.top-bar {
+    -fx-padding: 20;
+}
+
+.title-label {
+    -fx-text-fill: white;
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+}
+
+.subtitle-label {
+    -fx-text-fill: #bbbbbb;
+    -fx-font-size: 14px;
+}
+
+.content-area {
+    -fx-background-color: #2b2b2b;
+}
+
+.section-title {
+    -fx-text-fill: white;
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+}
+
+.primary-button {
+    -fx-background-color: #4CAF50;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+.secondary-button {
+    -fx-background-color: #3a3a3a;
+    -fx-text-fill: white;
+}
+
+.danger-button {
+    -fx-background-color: #b33939;
+    -fx-text-fill: white;
+}
+
+/* ================= DIALOG OSCURO ================= */
+
+.dark-dialog {
+    -fx-background-color: #2b2b2b;
+}
+
+.dark-dialog .header-panel {
+    -fx-background-color: #1e1e1e;
+}
+
+.dark-dialog .label {
+    -fx-text-fill: white;
+}
+
+.dialog-text-field {
+    -fx-background-color: #3a3a3a;
+    -fx-text-fill: white;
+    -fx-prompt-text-fill: #aaaaaa;
+    -fx-background-radius: 5;
+}
