@@ -13,22 +13,46 @@
     <!-- ===================== TOP BAR ===================== -->
     <top>
         <VBox styleClass="top-container">
-            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="top-bar">
+            <HBox alignment="CENTER_LEFT"
+                  spacing="15"
+                  styleClass="top-bar">
+
                 <Label text="Dungeon Mice"
                        styleClass="title-label"/>
+
                 <Label text="Plataforma de análisis conductual"
                        styleClass="subtitle-label"/>
+
+                <!-- Espaciador -->
+                <Region HBox.hgrow="ALWAYS"/>
+
+                <!-- BOTÓN LOGOUT -->
+                <Button text="Cerrar sesión"
+                        fx:id="logoutButton"
+                        styleClass="logout-button"
+                        prefHeight="35"/>
             </HBox>
         </VBox>
     </top>
 
+
     <!-- ===================== LEFT PANEL ===================== -->
     <left>
-        <VBox spacing="20" styleClass="side-panel">
+        <VBox spacing="20" styleClass="side-panel" prefWidth="260">
             <padding>
                 <Insets top="20" right="15" bottom="20" left="15"/>
             </padding>
 
+            <!-- VIDEOS DEL GRUPO -->
+            <Label text="Videos del grupo"
+                   styleClass="section-title"/>
+
+            <ListView fx:id="videoListView"
+                      VBox.vgrow="ALWAYS"/>
+
+            <Separator/>
+
+            <!-- SUJETOS -->
             <Label text="Sujetos registrados"
                    styleClass="section-title"/>
 
@@ -48,6 +72,7 @@
             </HBox>
         </VBox>
     </left>
+
 
     <!-- ===================== CENTER CONTENT ===================== -->
     <center>

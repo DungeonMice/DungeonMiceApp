@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/11"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.phys.dungeonmiceapp.controller.GroupSelectionController"
+            stylesheets="@styles/main.css">
+
+    <!-- ================= TOP ================= -->
+    <top>
+        <VBox styleClass="top-container">
+            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="top-bar">
+                <Label text="Dungeon Mice"
+                       styleClass="title-label"/>
+                <Label text="Seleccionar grupo de trabajo"
+                       styleClass="subtitle-label"/>
+            </HBox>
+        </VBox>
+    </top>
+
+    <!-- ================= CENTER ================= -->
+    <center>
+        <VBox spacing="30" alignment="CENTER"
+              styleClass="content-area">
+
+            <padding>
+                <Insets top="40" right="60" bottom="40" left="60"/>
+            </padding>
+
+            <Label text="Grupos disponibles"
+                   styleClass="section-title"/>
+
+            <ListView fx:id="groupListView"
+                      prefHeight="350"
+                      maxWidth="500"/>
+
+            <HBox spacing="20" alignment="CENTER">
+
+                <Button text="➕ Crear grupo"
+                        onAction="#handleCreateGroup"
+                        styleClass="secondary-button"
+                        prefWidth="160"
+                        prefHeight="40"/>
+
+                <Button text="🗑 Eliminar"
+                        onAction="#handleDeleteGroup"
+                        styleClass="danger-button"
+                        prefWidth="130"
+                        prefHeight="40"/>
+
+                <Button text="Entrar"
+                        onAction="#handleEnterGroup"
+                        styleClass="primary-button"
+                        prefWidth="140"
+                        prefHeight="40"/>
+
+
+            </HBox>
+
+        </VBox>
+    </center>
+
+</BorderPane>

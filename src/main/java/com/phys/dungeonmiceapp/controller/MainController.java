@@ -18,6 +18,18 @@ import javafx.scene.media.MediaView;
 import javafx.stage.FileChooser;
 import javafx.util.Duration;
 
+import com.phys.dungeonmiceapp.database.VideoRepository;
+import com.phys.dungeonmiceapp.session.SessionManager;
+import org.bson.Document;
+import org.bson.types.ObjectId;
+import javafx.scene.control.ListView;
+import java.util.List;
+
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Scene;
+import javafx.stage.Stage;
+
+
 public class MainController implements Initializable {
 
     @FXML private MediaView mediaView;
@@ -28,7 +40,11 @@ public class MainController implements Initializable {
     @FXML private Slider timeSlider;
     @FXML private Label timeLabel;
     @FXML private Slider volumeSlider;
+    @FXML private ListView<Document> videoListView;
+    @FXML private Button logoutButton;
 
+
+    private ObjectId currentGroupId;
     private MediaPlayer mediaPlayer;
 
     @Override
@@ -59,6 +75,7 @@ public class MainController implements Initializable {
         });
 
         loadVideoButton.setOnAction(e -> openVideo());
+        logoutButton.setOnAction(e -> logout());
     }
 
     private void openVideo() {
@@ -74,10 +91,39 @@ public class MainController implements Initializable {
 
         File file = fileChooser.showOpenDialog(null);
 
-        if (file != null) {
-            loadVideo(file);
+        if (file != null && currentGroupId != null) {
+
+            try {
+
+                String username =
+                        SessionManager.getCurrentUser().getString("username");
+
+                File targetDir = new File("videos/" + username + "/" + currentGroupId);
+                targetDir.mkdirs();
+
+                File targetFile = new File(targetDir, file.getName());
+
+                java.nio.file.Files.copy(
+                        file.toPath(),
+                        targetFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                );
+
+                // Guardar en Mongo
+                VideoRepository.addVideo(
+                        currentGroupId,
+                        file.getName(),
+                        targetFile.getPath()
+                );
+
+                loadVideos();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
+
 
     private void loadVideo(File file) {
 
@@ -133,4 +179,64 @@ public class MainController implements Initializable {
 
         return String.format("%02d:%02d", minutes, seconds);
     }
+
+    public void setGroup(ObjectId groupId) {
+        this.currentGroupId = groupId;
+        loadVideos();
+    }
+
+    private void loadVideos() {
+
+        if (currentGroupId == null) return;
+
+        List<Document> videos =
+                VideoRepository.findByGroup(currentGroupId);
+
+        videoListView.getItems().clear();
+        videoListView.getItems().addAll(videos);
+
+        videoListView.setCellFactory(param -> new javafx.scene.control.ListCell<>() {
+            @Override
+            protected void updateItem(Document item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : item.getString("title"));
+            }
+        });
+
+        videoListView.setOnMouseClicked(event -> {
+            if (event.getClickCount() == 2) {
+                Document selected =
+                        videoListView.getSelectionModel().getSelectedItem();
+
+                if (selected != null) {
+                    File file = new File(selected.getString("filePath"));
+                    loadVideo(file);
+                }
+            }
+        });
+
+    }
+
+    private void logout() {
+
+        try {
+
+            // Limpiar sesión
+            SessionManager.logout();
+
+            // Cargar login
+            FXMLLoader loader =
+                    new FXMLLoader(getClass().getResource("/com/phys/dungeonmiceapp/login.fxml"));
+
+            Stage stage = (Stage) logoutButton.getScene().getWindow();
+            stage.setScene(new Scene(loader.load()));
+            stage.setTitle("Login - Dungeon Mice");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
+
 }
