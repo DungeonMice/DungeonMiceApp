@@ -4,6 +4,7 @@
 <?import javafx.scene.layout.*?>
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.media.MediaView?>
+<?import javafx.scene.Group?>
 
 <BorderPane xmlns="http://javafx.com/javafx/11"
             xmlns:fx="http://javafx.com/fxml/1"
@@ -31,6 +32,10 @@
                         fx:id="logoutButton"
                         styleClass="logout-button"
                         prefHeight="35"/>
+
+                <Button text="🔍 Reset"
+                        fx:id="resetZoomButton"
+                        prefWidth="100"/>
             </HBox>
         </VBox>
     </top>
@@ -94,15 +99,14 @@
 
             <!-- VIDEO CONTAINER -->
             <StackPane styleClass="video-container"
+                       fx:id="videoContainer"
                        prefHeight="520"
                        VBox.vgrow="ALWAYS">
 
-                <!-- MediaView -->
-                <MediaView fx:id="mediaView"
-                           preserveRatio="true"
-                           StackPane.alignment="CENTER"/>
-
-                <!-- Aquí irá el Canvas para tracking en el futuro -->
+                <Group fx:id="zoomGroup">
+                    <MediaView fx:id="mediaView"
+                               preserveRatio="true"/>
+                </Group>
 
             </StackPane>
 
