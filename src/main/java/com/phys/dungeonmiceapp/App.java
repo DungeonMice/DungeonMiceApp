@@ -13,7 +13,6 @@ public class App extends Application {
     @Override
     public void start(Stage stage) throws Exception {
 
-        // 🔥 CONECTAR A MONGO AQUÍ
         DatabaseManager.connect();
 
         FXMLLoader fxmlLoader = new FXMLLoader(
@@ -23,7 +22,7 @@ public class App extends Application {
         Scene scene = new Scene(fxmlLoader.load());
 
         Image image = new Image(
-                App.class.getResource("/images/DungeonMiceApp.png").toExternalForm()
+                App.class.getResource("/images/LOGO.jpg").toExternalForm()
         );
 
         stage.getIcons().add(image);
