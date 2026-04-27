@@ -17,34 +17,30 @@
 
     <dependencies>
 
+        <!-- JavaFX (sin classifier de plataforma: el plugin lo resuelve solo) -->
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
             <version>17.0.10</version>
-            <classifier>win</classifier>
         </dependency>
-
-        <!-- Source: https://mvnrepository.com/artifact/org.mongodb/mongo-java-driver -->
-        <dependency>
-            <groupId>org.mongodb</groupId>
-            <artifactId>mongo-java-driver</artifactId>
-            <version>3.12.14</version>
-            <scope>compile</scope>
-        </dependency>
-
 
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-fxml</artifactId>
             <version>17.0.10</version>
-            <classifier>win</classifier>
         </dependency>
 
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-media</artifactId>
             <version>17.0.10</version>
-            <classifier>win</classifier>
+        </dependency>
+
+        <!-- Gson — serialización JSON -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.10.1</version>
         </dependency>
 
     </dependencies>
@@ -60,6 +56,26 @@
                 <configuration>
                     <release>11</release>
                 </configuration>
+            </plugin>
+
+            <!-- Fat JAR -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>shade</goal></goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.phys.dungeonmiceapp.App</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- JavaFX Run Plugin -->

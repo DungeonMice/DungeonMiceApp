@@ -4,6 +4,7 @@
 <?import javafx.scene.layout.*?>
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.media.MediaView?>
+<?import javafx.scene.Group?>
 
 <BorderPane xmlns="http://javafx.com/javafx/11"
             xmlns:fx="http://javafx.com/fxml/1"
@@ -31,6 +32,10 @@
                         fx:id="logoutButton"
                         styleClass="logout-button"
                         prefHeight="35"/>
+
+                <Button text="🔍 Reset"
+                        fx:id="resetZoomButton"
+                        prefWidth="100"/>
             </HBox>
         </VBox>
     </top>
@@ -89,20 +94,30 @@
                     maxWidth="250"/>
 
             <!-- ================= VIDEO PLAYER SECTION ================= -->
-            <Label text="Reproductor de video"
-                   styleClass="section-title"/>
+            <HBox alignment="CENTER_LEFT" spacing="10">
+                <Label text="Reproductor de video"
+                       styleClass="section-title"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="loadingLabel"
+                       text="Cargando video..."
+                       visible="false"
+                       styleClass="loading-label"/>
+            </HBox>
 
             <!-- VIDEO CONTAINER -->
             <StackPane styleClass="video-container"
-                       prefHeight="520"
+                       fx:id="videoContainer"
+                       minHeight="0"
+                       maxHeight="Infinity"
                        VBox.vgrow="ALWAYS">
-
-                <!-- MediaView -->
-                <MediaView fx:id="mediaView"
-                           preserveRatio="true"
-                           StackPane.alignment="CENTER"/>
-
-                <!-- Aquí irá el Canvas para tracking en el futuro -->
+                <ProgressIndicator fx:id="loadingIndicator"
+                                   visible="false"
+                                   maxWidth="100"
+                                   maxHeight="100"/>
+                <Group fx:id="zoomGroup">
+                    <MediaView fx:id="mediaView"
+                               preserveRatio="true"/>
+                </Group>
 
             </StackPane>
 
