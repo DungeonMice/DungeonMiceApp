@@ -1,16 +1,16 @@
 package com.phys.dungeonmiceapp.session;
 
-import org.bson.Document;
+import com.phys.dungeonmiceapp.model.User;
 
 public class SessionManager {
 
-    private static Document currentUser;
+    private static User currentUser;
 
-    public static void setCurrentUser(Document user) {
+    public static void setCurrentUser(User user) {
         currentUser = user;
     }
 
-    public static Document getCurrentUser() {
+    public static User getCurrentUser() {
         return currentUser;
     }
 

@@ -1,9 +1,8 @@
 package com.phys.dungeonmiceapp.database;
 
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
-import org.bson.Document;
-import org.bson.types.ObjectId;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.phys.dungeonmiceapp.model.User;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -11,52 +10,57 @@ import java.util.List;
 
 public class UserRepository {
 
-    private static MongoCollection<Document> getCollection() {
-        MongoDatabase database = DatabaseManager.getDatabase();
-        return database.getCollection("users");
-    }
+    private static final String COLLECTION = "users";
 
-    // 🔹 Crear usuario
+    // CREATE
     public static void createUser(String username, String password, String role) {
-
-        Document user = new Document()
-                .append("username", username)
-                .append("password", password)
-                .append("role", role)
-                .append("createdAt", new Date());
-
-        getCollection().insertOne(user);
+        JsonObject user = new JsonObject();
+        user.addProperty("username",  username);
+        user.addProperty("password",  password);
+        user.addProperty("role",      role);
+        user.addProperty("createdAt", new Date().toString());
+        DatabaseManager.insertOne(COLLECTION, user);
     }
 
-    // 🔹 Buscar usuario por username
-    public static Document findByUsername(String username) {
-
-        return getCollection()
-                .find(new Document("username", username))
-                .first();
+    // READ
+    public static User findByUsername(String username) {
+        JsonObject filter = new JsonObject();
+        filter.addProperty("username", username);
+        JsonObject result = DatabaseManager.findOne(COLLECTION, filter);
+        return result != null ? toUser(result) : null;
     }
 
-    // 🔹 Login
-    public static Document login(String username, String password) {
-
-        return getCollection()
-                .find(new Document("username", username)
-                        .append("password", password))
-                .first();
+    public static User login(String username, String password) {
+        JsonObject filter = new JsonObject();
+        filter.addProperty("username", username);
+        filter.addProperty("password", password);
+        JsonObject result = DatabaseManager.findOne(COLLECTION, filter);
+        return result != null ? toUser(result) : null;
     }
 
-    // 🔹 Obtener todos los usuarios
-    public static List<Document> findAll() {
-
-        return getCollection()
-                .find()
-                .into(new ArrayList<>());
+    public static List<User> findAll() {
+        JsonArray docs = DatabaseManager.findAll(COLLECTION);
+        List<User> users = new ArrayList<>();
+        for (int i = 0; i < docs.size(); i++) {
+            users.add(toUser(docs.get(i).getAsJsonObject()));
+        }
+        return users;
     }
 
-    // 🔹 Eliminar usuario por ID
-    public static void deleteById(ObjectId id) {
+    // DELETE
+    public static void deleteById(String id) {
+        JsonObject filter = new JsonObject();
+        filter.addProperty("_id", id);
+        DatabaseManager.deleteOne(COLLECTION, filter);
+    }
 
-        getCollection()
-                .deleteOne(new Document("_id", id));
+    // Mapper
+    private static User toUser(JsonObject doc) {
+        return new User(
+                doc.has("_id")      ? doc.get("_id").getAsString()      : null,
+                doc.has("username") ? doc.get("username").getAsString()  : null,
+                doc.has("password") ? doc.get("password").getAsString()  : null,
+                doc.has("role")     ? doc.get("role").getAsString()      : null
+        );
     }
 }
