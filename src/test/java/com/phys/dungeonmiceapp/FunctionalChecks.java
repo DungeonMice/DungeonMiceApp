@@ -145,6 +145,24 @@ public final class FunctionalChecks extends Application {
             Slider volume = (Slider) playback.lookup("#playback-volume"); volume.setValue(.27);
             check(Math.abs(playback.getPlayer().getVolume() - .27) < .001, "Volume changes applied");
             snapshot(workspace, "video-functional.png");
+            check(workspace.lookup("#python-api-url") != null, "Python API endpoint control exists");
+            check(!((Button) workspace.lookup("#python-process")).isDisabled(), "Python processing enabled for selected video");
+            check(((Button) workspace.lookup("#python-result")).isDisabled(), "Result unavailable before processing");
+            stage.setWidth(1000); stage.setHeight(740);
+            waitFor(() -> workspace.getScene().getWidth() < 1010, this::checkCompactApi);
+    }
+
+    private void checkCompactApi() {
+            css(); snapshot(workspace, "video-api-1000x740.png");
+            Node process = workspace.lookup("#python-process");
+            javafx.geometry.Bounds bounds = process.localToScene(process.getBoundsInLocal());
+            check(bounds.getMaxY() <= workspace.getScene().getHeight(), "Python processing control visible in compact window");
+            stage.setWidth(1440); stage.setHeight(900);
+            waitFor(() -> workspace.getScene().getWidth() > 1400, this::continueAfterPlayback);
+    }
+
+    private void continueAfterPlayback() {
+            css();
             DirectPlayer old = playback.getPlayer(); fire("Datos"); css(); check(old.getStatus() == MediaPlayer.Status.DISPOSED, "Player disposed on navigation");
             fire("Usuario"); css(); check(((TextField) workspace.lookup("#profile-name")).getText().equals("Full Name"), "UI profile restored");
             text("profile-name", "Updated Through UI"); fire("Guardar cambios"); css();

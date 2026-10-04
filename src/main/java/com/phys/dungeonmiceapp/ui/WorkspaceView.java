@@ -3,6 +3,8 @@ package com.phys.dungeonmiceapp.ui;
 import com.phys.dungeonmiceapp.database.*;
 import com.phys.dungeonmiceapp.model.*;
 import com.phys.dungeonmiceapp.session.SessionManager;
+import com.phys.dungeonmiceapp.api.PythonVideoClient;
+import com.google.gson.JsonArray;
 import java.io.File;
 import java.io.IOException;
 import java.awt.image.BufferedImage;
@@ -58,6 +60,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private boolean maximized;
     private Rectangle2D restoreBounds;
     private boolean closed;
+    private Task<java.nio.file.Path> apiTask;
+    private final TextField pythonAddress = new TextField(System.getProperty("dungeonmice.python.url", "http://127.0.0.1:8765"));
     private final javafx.animation.PauseTransition directoryDelay = new javafx.animation.PauseTransition(javafx.util.Duration.millis(350));
     private ListView<File> projectFiles;
     private Label directoryMessage;
@@ -82,6 +86,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private String username() { return SessionManager.isLoggedIn() ? SessionManager.getCurrentUser().getUsername() : ""; }
 
     private void show(String next) {
+        cancelApi();
         directoryDelay.stop(); directoryGeneration++; projectFiles = null; directoryMessage = null;
         disposePlayers();
         if (!next.equals("login") && !next.equals("register") && !SessionManager.isLoggedIn()) next = "login";
@@ -459,7 +464,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             VBox empty = new VBox(20, heading("Selecciona un proyecto", false), button("Ver proyectos", "primary", () -> show("projects"))); empty.setAlignment(Pos.CENTER); return empty;
         }
         List<Video> videos = VideoRepository.findByGroup(selectedProject.getId());
-        VBox logs = sidePanel("Registros"); ListView<String> entries = new ListView<>(); entries.setPrefHeight(200); VBox.setVgrow(entries, Priority.ALWAYS); logs.getChildren().add(entries);
+        VBox logs = sidePanel("Registros"); ListView<String> entries = new ListView<>(); entries.setMinHeight(100); entries.setPrefHeight(200); VBox.setVgrow(entries, Priority.ALWAYS); logs.getChildren().add(entries);
         entries.setStyle("-fx-border-width: 0; -fx-background-color: transparent; -fx-padding: 0;");
         entries.setCellFactory(list -> new ListCell<String>() {
             private final Label text = new Label();
@@ -487,13 +492,70 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         HBox tools = new HBox(10, choices, load, remove, iconButton("zoom", "Acercar", () -> player.setZoom(2)), iconButton("reset", "Restablecer zoom", player::resetZoom));
         tools.getStyleClass().add("mode-toolbar"); tools.setAlignment(Pos.CENTER_LEFT);
         VBox regions = sidePanel("Regiones"); regions.getChildren().add(new Label("Sin regiones"));
-        VBox sidebar = new VBox(20, identity(), logs, regions); sidebar.setMinWidth(240); sidebar.setPrefWidth(240); sidebar.setMaxWidth(240); sidebar.setPadding(new Insets(16, 20, 20, 0)); VBox.setVgrow(logs, Priority.ALWAYS);
-        BorderPane page = new BorderPane(); page.setTop(tools); player.setPadding(new Insets(20, 25, 30, 20)); page.setCenter(player); page.setRight(sidebar); return page;
+        VBox sidebar = new VBox(20, identity(), pythonPanel(choices, player), logs, regions); sidebar.setMinWidth(240); sidebar.setPrefWidth(240); sidebar.setMaxWidth(240); sidebar.setPadding(new Insets(16, 20, 20, 0)); VBox.setVgrow(logs, Priority.ALWAYS);
+        sidebar.setMinWidth(0);
+        ScrollPane sidebarScroll = new ScrollPane(sidebar); sidebarScroll.setFitToWidth(true); sidebarScroll.setFitToHeight(true);
+        sidebarScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        sidebarScroll.setMinWidth(240); sidebarScroll.setPrefWidth(240); sidebarScroll.setMaxWidth(240);
+        sidebarScroll.setStyle("-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0;");
+        BorderPane page = new BorderPane(); page.setTop(tools); player.setPadding(new Insets(20, 25, 30, 20)); page.setCenter(player); page.setRight(sidebarScroll); return page;
     }
 
     private javafx.util.Duration playerTime() {
         return players.isEmpty() || players.get(players.size() - 1).getPlayer() == null ? javafx.util.Duration.ZERO : players.get(players.size() - 1).getPlayer().getCurrentTime();
     }
+
+    private VBox pythonPanel(ComboBox<Video> choices, PlaybackPane player) {
+        VBox panel = sidePanel("Python");
+        pythonAddress.setId("python-api-url");
+        pythonAddress.setTooltip(new Tooltip("Direccion de la API local de Python"));
+        Label status = new Label(); status.setWrapText(true); status.setMaxWidth(Double.MAX_VALUE);
+        javafx.beans.property.BooleanProperty busy = new javafx.beans.property.SimpleBooleanProperty(false);
+        Button view = button("Ver resultado", "outline", () -> {}); view.setDisable(true);
+        Button process = button("Procesar video", "primary", () -> {
+            Video video = choices.getValue(); if (video == null || apiTask != null) return;
+            File source = MediaFiles.resolve(video.getFilePath());
+            FileChooser chooser = new FileChooser(); chooser.setTitle("Guardar video de Python");
+            String name = source.getName(); int dot = name.lastIndexOf('.');
+            chooser.setInitialFileName((dot < 0 ? name : name.substring(0, dot)) + "-procesado" + (dot < 0 ? ".mp4" : name.substring(dot)));
+            if (source.getParentFile() != null && source.getParentFile().isDirectory()) chooser.setInitialDirectory(source.getParentFile());
+            File destination = chooser.showSaveDialog(stage); if (destination == null) return;
+            try {
+                java.nio.file.Path path = destination.getCanonicalFile().toPath();
+                if (path.startsWith(MediaFiles.storage().toRealPath())) throw new IOException("Guarda el resultado fuera del directorio de la aplicacion.");
+                PythonVideoClient client = new PythonVideoClient(java.net.URI.create(pythonAddress.getText().trim()));
+                String projectId = selectedProject.getId();
+                Task<java.nio.file.Path> task = new Task<java.nio.file.Path>() {
+                    @Override protected java.nio.file.Path call() throws Exception {
+                        return client.process(source.toPath(), path, video.getId(), projectId, new JsonArray(), this::updateMessage);
+                    }
+                };
+                apiTask = task; busy.set(true); view.setDisable(true);
+                status.textProperty().bind(task.messageProperty());
+                task.setOnSucceeded(e -> {
+                    if (apiTask != task || closed) return;
+                    apiTask = null; busy.set(false); status.textProperty().unbind(); status.setText("Video recibido");
+                    File result = task.getValue().toFile(); view.setDisable(false);
+                    view.setOnAction(event -> openVideo(player, result, false));
+                    openVideo(player, result, false);
+                });
+                task.setOnFailed(e -> {
+                    if (apiTask != task || closed) return;
+                    apiTask = null; busy.set(false); status.textProperty().unbind(); status.setText("Error de conexion o procesamiento"); error(task.getException());
+                });
+                task.setOnCancelled(e -> { busy.set(false); status.textProperty().unbind(); status.setText("Cancelado"); });
+                files.submit(task);
+            } catch (RuntimeException | IOException ex) { error(ex); }
+        });
+        process.setId("python-process"); process.disableProperty().bind(choices.valueProperty().isNull().or(busy));
+        pythonAddress.disableProperty().bind(busy);
+        Button cancel = button("Cancelar", "outline", this::cancelApi); cancel.disableProperty().bind(busy.not());
+        view.setId("python-result");
+        for (Button button : new Button[]{process, cancel, view}) button.setMaxWidth(Double.MAX_VALUE);
+        panel.getChildren().addAll(pythonAddress, process, cancel, view, status); return panel;
+    }
+
+    private void cancelApi() { if (apiTask != null) { apiTask.cancel(true); apiTask = null; } }
 
     private PlaybackPane newPlayer(boolean compact, Consumer<String> log) { PlaybackPane player = new PlaybackPane(compact, log); players.add(player); return player; }
     private VBox sidePanel(String title) { VBox box = new VBox(10, heading(title, false)); box.getStyleClass().add("side-panel"); box.setPadding(new Insets(10)); return box; }
@@ -543,6 +605,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     @Override public void close() {
         if (closed) return;
         closed = true;
+        cancelApi();
         directoryDelay.stop(); directoryGeneration++;
         try { disposePlayers(); } finally { files.shutdownNow(); mediaPreparation.shutdownNow(); }
     }
