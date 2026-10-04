@@ -1,0 +1,75 @@
+.workspace {
+    -fx-font-family: "Segoe UI";
+    -fx-font-size: 14px;
+    -fx-background-color: #dedede;
+    -fx-text-fill: #202020;
+    -fx-focus-color: #666666;
+    -fx-faint-focus-color: transparent;
+}
+.label { -fx-text-fill: #202020; }
+.title-bar { -fx-background-color: #cccccc; -fx-padding: 0 0 0 12; -fx-pref-height: 38; -fx-min-height: 38; -fx-max-height: 38; }
+.title-bar .label { -fx-font-size: 12px; -fx-font-weight: 600; }
+.button, .toggle-button { -fx-cursor: hand; -fx-background-insets: 0; -fx-font-weight: 600; }
+.button:focused, .toggle-button:focused { -fx-effect: dropshadow(gaussian, #999999, 4, 0.25, 0, 0); }
+.primary, .outline, .danger { -fx-pref-width: 200; -fx-min-height: 38; -fx-padding: 8 14; -fx-background-radius: 8; -fx-border-radius: 8; }
+.primary { -fx-background-color: #191919; -fx-text-fill: white; }
+.primary:hover { -fx-background-color: #383838; }
+.primary:pressed { -fx-background-color: black; }
+.outline { -fx-background-color: transparent; -fx-border-color: #a7a7a7; -fx-border-width: 1; -fx-text-fill: #202020; }
+.outline:hover { -fx-background-color: #e7e7e7; -fx-border-color: #747474; }
+.danger { -fx-background-color: #bc193c; -fx-text-fill: white; }
+.danger:hover { -fx-background-color: #a31432; }
+.wide { -fx-pref-width: 415; -fx-max-width: infinity; }
+.photo-button { -fx-pref-width: 150; -fx-pref-height: 36; -fx-font-size: 13px; -fx-padding: 7 10; }
+.icon-button { -fx-background-color: transparent; -fx-background-radius: 8; -fx-padding: 8; -fx-min-height: 34; }
+.icon-button:hover { -fx-background-color: #c9c9c9; }
+.window-minimize, .window-maximize, .window-close { -fx-min-width: 40; -fx-pref-width: 40; -fx-max-width: 40; -fx-min-height: 38; -fx-pref-height: 38; -fx-max-height: 38; -fx-padding: 0; -fx-background-insets: 0; -fx-background-radius: 0; -fx-border-width: 0; -fx-background-color: transparent; }
+.window-close:hover { -fx-background-color: #bc193c; }
+.navigation { -fx-background-color: #f6f6f6; -fx-padding: 7 12; -fx-spacing: 8; -fx-border-color: #cccccc; -fx-border-width: 0 0 1 0; }
+.tab { -fx-background-color: transparent; -fx-background-radius: 8; -fx-pref-height: 36; -fx-pref-width: 256; -fx-padding: 7; -fx-text-fill: #555555; }
+.tab.selected { -fx-background-color: #191919; -fx-text-fill: white; }
+.tab:hover { -fx-background-color: #e6e6e6; }
+.tab.selected:hover { -fx-background-color: #383838; }
+.form-surrounding { -fx-background-color: #cccccc; }
+.form-column { -fx-background-color: #f6f6f6; }
+.avatar { -fx-background-color: #ededed; -fx-background-radius: 200; -fx-border-color: #d4d4d4; -fx-border-radius: 200; }
+.text-field, .password-field, .combo-box { -fx-pref-height: 36; -fx-min-height: 36; -fx-max-height: 36; -fx-background-color: white; -fx-background-insets: 0; -fx-background-radius: 8; -fx-border-color: #b9b9b9; -fx-border-radius: 8; -fx-padding: 6 10; -fx-text-fill: #202020; }
+.text-field:focused, .combo-box:focused { -fx-border-color: #505050; -fx-effect: dropshadow(gaussian, #d5d5d5, 4, 0.2, 0, 0); }
+.combo-box { -fx-padding: 0; }
+.combo-box > .list-cell { -fx-background-color: transparent; -fx-text-fill: #202020; -fx-border-width: 0; -fx-padding: 5 10; }
+.path-field { -fx-background-color: white; -fx-border-color: #b9b9b9; -fx-background-radius: 8; -fx-border-radius: 8; }
+.path-field .text-field { -fx-border-color: transparent; -fx-padding: 5; }
+.path-field .icon-button { -fx-padding: 6; }
+.range-track { -fx-background-color: #eeeeee; -fx-border-color: #b9b9b9; -fx-border-radius: 10; -fx-background-radius: 10; }
+.range-selection { -fx-background-color: #555555; }
+.hyperlink { -fx-text-fill: #606060; -fx-underline: false; -fx-border-color: transparent; -fx-padding: 2 0; -fx-font-size: 12px; }
+.hyperlink:hover { -fx-text-fill: black; -fx-underline: true; }
+.heading { -fx-font-size: 27px; -fx-font-weight: bold; }
+.section-heading { -fx-font-size: 21px; -fx-font-weight: bold; }
+.project-list-side { -fx-background-color: #dedede; }
+.project-details-side { -fx-background-color: #eeeeee; }
+.list-view { -fx-background-color: #f6f6f6; -fx-background-radius: 8; -fx-border-color: #b9b9b9; -fx-border-radius: 8; -fx-border-width: 1; -fx-padding: 4; }
+.list-cell { -fx-background-color: transparent; -fx-background-radius: 6; -fx-text-fill: #202020; -fx-padding: 8 10; }
+.list-cell:filled:hover { -fx-background-color: #e6e6e6; }
+.list-cell:filled:selected { -fx-background-color: #191919; -fx-text-fill: white; }
+.list-cell:empty { -fx-background-color: transparent; }
+.gallery, .side-panel { -fx-background-color: #f6f6f6; -fx-background-radius: 8; }
+.side-panel .section-heading { -fx-font-size: 19px; -fx-padding: 0 0 10 0; }
+.mode-toolbar { -fx-padding: 8 20; -fx-spacing: 6; -fx-background-color: #dedede; }
+.mode { -fx-background-color: transparent; -fx-background-radius: 8; -fx-pref-height: 34; -fx-padding: 6 8; -fx-font-size: 13px; -fx-text-fill: #555555; }
+.mode:hover { -fx-background-color: #cccccc; }
+.mode:selected { -fx-background-color: #191919; -fx-text-fill: white; }
+.video-viewport { -fx-border-color: #a7a7a7; -fx-border-radius: 8; -fx-background-radius: 8; -fx-background-color: #dedede; }
+.playback-toolbar { -fx-spacing: 6; }
+.playback-toolbar .icon-button { -fx-background-color: #eeeeee; }
+.playback-toolbar .icon-button:hover { -fx-background-color: white; }
+.timecode { -fx-font-family: "Consolas"; -fx-font-size: 12px; -fx-text-fill: #606060; }
+.table-view { -fx-background-color: #f6f6f6; -fx-background-radius: 8; -fx-border-color: #b9b9b9; -fx-border-radius: 8; -fx-padding: 3; }
+.table-view .column-header { -fx-background-color: #e6e6e6; -fx-pref-height: 38; }
+.table-view .column-header .label { -fx-font-weight: 600; }
+.playback-viewport { -fx-background-color: #151515; -fx-background-radius: 8; }
+.playback-status { -fx-text-fill: #eeeeee; -fx-padding: 12; -fx-text-alignment: center; }
+.validation-message { -fx-font-size: 12px; -fx-text-fill: #a31432; }
+.thumbnail { -fx-background-color: #dedede; -fx-background-radius: 8; }
+.slider .track { -fx-background-color: #b9b9b9; -fx-background-radius: 8; -fx-pref-height: 6; }
+.slider .thumb { -fx-background-color: #333333; -fx-padding: 6; }
