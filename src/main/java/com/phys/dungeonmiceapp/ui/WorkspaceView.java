@@ -438,7 +438,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         cancelPreparation(player); player.prepare();
         Task<File> task = new Task<File>() {
             @Override protected File call() throws Exception {
-                return preview ? MediaFiles.preview(source, this::updateMessage) : MediaFiles.playable(source, this::updateMessage);
+                updateMessage("Abriendo archivo original...");
+                return preview ? MediaFiles.preview(source) : MediaFiles.playable(source);
             }
         };
         playbackRequests.put(player, task);

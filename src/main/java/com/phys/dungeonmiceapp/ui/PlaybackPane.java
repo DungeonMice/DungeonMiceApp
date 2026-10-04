@@ -14,7 +14,7 @@ import javafx.scene.shape.Rectangle;
 import javafx.util.Duration;
 
 public final class PlaybackPane extends VBox implements AutoCloseable {
-    private final MediaView view = new MediaView();
+    private final javafx.scene.image.ImageView view = new javafx.scene.image.ImageView();
     private final Region viewport;
     private final Label status = new Label("Selecciona un video");
     private final Label clock = new Label("00:00:00.000");
@@ -22,7 +22,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
     private final Slider volume = new Slider(0, 1, .5);
     private final HBox playbackControls = new HBox(6);
     private final Consumer<String> log;
-    private MediaPlayer player;
+    private DirectPlayer player;
     private long generation;
     private double zoom = 1;
     private double panX, panY, mouseX, mouseY;
@@ -51,6 +51,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         Rectangle clip = new Rectangle(); clip.widthProperty().bind(viewport.widthProperty()); clip.heightProperty().bind(viewport.heightProperty());
         clip.setArcWidth(16); clip.setArcHeight(16); viewport.setClip(clip);
         status.getStyleClass().add("playback-status"); status.setWrapText(true); status.setMaxWidth(400);
+        status.setId("playback-status");
         timeline.setMax(1); timeline.setDisable(true); timeline.setId("playback-seek");
         timeline.valueProperty().addListener((obs, old, value) -> {
             if (!updating && player != null && timeline.isValueChanging()) player.seek(Duration.seconds(value.doubleValue()));
@@ -93,24 +94,26 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
     }
 
     public void open(File file) {
-        open(file, 0);
+        openDirect(file);
     }
 
     public void prepare() { close(); status.setText("Preparando video..."); }
     public void preparationMessage(String message) { if (player == null) status.setText(message); }
     public void showError(String message) { close(); fail(message); }
 
-    private void open(File file, int attempt) {
+    private void openDirect(File file) {
         close(); resetZoom();
         status.setText("Cargando video..."); status.setVisible(true);
         if (!file.isFile()) { fail("No se encontro el archivo: " + file.getName()); return; }
         final long token = ++generation;
         try {
-            Media media = new Media(file.toURI().toString());
-            player = new MediaPlayer(media); final MediaPlayer loaded = player;
-            view.setMediaPlayer(loaded); loaded.setVolume(volume.getValue());
-            media.setOnError(() -> handleMediaError(file, attempt, token, media.getError()));
-            loaded.setOnError(() -> handleMediaError(file, attempt, token, loaded.getError()));
+            player = new DirectPlayer(file, view); final DirectPlayer loaded = player;
+            loaded.setVolume(volume.getValue());
+            loaded.setOnError(() -> {
+                if (token != generation) return;
+                RuntimeException error = loaded.getError(); close();
+                fail(error == null ? "No se pudo abrir el video." : error.getMessage());
+            });
             loaded.setOnReady(() -> {
                 if (token != generation) return;
                 status.setVisible(false); timeline.setDisable(false); playbackControls.setDisable(false);
@@ -133,23 +136,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
                 clock.setText(format(time) + " / " + format(loaded.getTotalDuration()));
             });
             loaded.setOnEndOfMedia(() -> { if (token == generation) { loaded.pause(); log.accept("Fin del video"); } });
-        } catch (MediaException e) { handleMediaError(file, attempt, token, e); }
-    }
-
-    private void handleMediaError(File file, int attempt, long token, MediaException error) {
-        if (token != generation) return;
-        // Windows' native decoder can still be releasing the previous preview of this URI.
-        if (attempt < 3 && error != null && error.toString().contains("ERROR_MEDIA_INVALID")) {
-            close(); status.setText("Cargando video...");
-            long retryToken = generation;
-            pendingOpen = new javafx.animation.PauseTransition(Duration.millis(400 * (attempt + 1)));
-            pendingOpen.setOnFinished(e -> { if (retryToken == generation) open(file, attempt + 1); });
-            pendingOpen.play();
-        } else {
-            close();
-            fail("No se pudo abrir el video. Comprueba que el archivo este disponible y use un formato compatible."
-                    + (error == null ? "" : "\n" + error.getMessage()));
-        }
+        } catch (RuntimeException e) { close(); fail(e.getMessage()); }
     }
 
     private void fail(String text) { status.setText(text); status.setVisible(true); timeline.setDisable(true); playbackControls.setDisable(true); log.accept(text); }
@@ -168,15 +155,14 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         panX = Math.max(-maxX, Math.min(maxX, panX)); panY = Math.max(-maxY, Math.min(maxY, panY)); applyTransform();
     }
     private void applyTransform() { view.setScaleX(zoom); view.setScaleY(zoom); view.setTranslateX(panX); view.setTranslateY(panY); }
-    public MediaPlayer getPlayer() { return player; }
+    public DirectPlayer getPlayer() { return player; }
     public Region getViewport() { return viewport; }
 
     @Override public void close() {
         generation++; priming = false;
         if (pendingOpen != null) { pendingOpen.stop(); pendingOpen = null; }
-        MediaPlayer previous = player; player = null;
-        view.setMediaPlayer(null);
-        // Disposing already stops playback; stop() can block a failing native decoder.
+        DirectPlayer previous = player; player = null;
+        view.setImage(null);
         if (previous != null) previous.dispose();
         timeline.setDisable(true); timeline.setValue(0); playbackControls.setDisable(true);
         status.setText("Selecciona un video"); status.setVisible(true); clock.setText("00:00:00.000");

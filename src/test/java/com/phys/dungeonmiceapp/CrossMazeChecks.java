@@ -107,9 +107,7 @@ public final class CrossMazeChecks extends Application {
                     if (sources.get(i).length() != sizes.get(i) || sources.get(i).lastModified() != modified.get(i)) throw new AssertionError("Original changed");
                 }
                 if (Files.exists(sandbox.resolve("videos"))) throw new AssertionError("Project video copies created");
-                try (java.util.stream.Stream<Path> cached = Files.list(sandbox.resolve("data/playback"))) {
-                    if (cached.anyMatch(file -> file.getFileName().toString().length() != 40)) throw new AssertionError("Partial preparation file left behind");
-                }
+                if (Files.exists(sandbox.resolve("data/playback")) || Files.exists(sandbox.resolve("data/previews"))) throw new AssertionError("Video cache created");
                 System.out.println("PASS rapid switching, UI maxPulseGapMs=" + maximumDelay + ", originals unchanged");
                 workspace.close(); Platform.exit();
             } catch (Throwable ex) { fail(ex); }
@@ -137,11 +135,24 @@ public final class CrossMazeChecks extends Application {
         timer.getKeyFrames().add(new KeyFrame(Duration.millis(100), e -> {
             try {
                 if (condition.getAsBoolean()) { timer.stop(); next.run(); }
+                else if ((System.nanoTime() - start) / 1000000000 > 3 && player() != null && player().getPlayer() == null
+                        && !((Label) player().lookup("#playback-status")).getText().contains("Abriendo")) {
+                    throw new AssertionError("Playback failed: " + ((Label) player().lookup("#playback-status")).getText());
+                }
                 else if ((System.nanoTime() - start) / 1000000000 > 60) { timer.stop(); throw new AssertionError("Timed out at video index " + index); }
             } catch (Throwable ex) { timer.stop(); fail(ex); }
         })); timer.play();
     }
-    private void fail(Throwable ex) { failure = ex; ex.printStackTrace(); if (workspace != null) workspace.close(); Platform.exit(); }
+    private void fail(Throwable ex) {
+        failure = ex; ex.printStackTrace();
+        if (workspace != null) {
+            PlaybackPane pane = player();
+            if (pane != null && pane.getPlayer() != null) System.err.println("Direct player status=" + pane.getPlayer().getStatus()
+                    + " duration=" + pane.getPlayer().getTotalDuration() + " error=" + pane.getPlayer().getError());
+            workspace.close();
+        }
+        Platform.exit();
+    }
     public static void main(String[] args) {
         launch(args);
         try {

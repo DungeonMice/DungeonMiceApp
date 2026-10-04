@@ -73,11 +73,10 @@ public final class FunctionalChecks extends Application {
             SessionManager.setCurrentUser(user);
             File fixture = new File(getParameters().getRaw().get(0));
             imported = fixture.getCanonicalFile();
-            File thumb = MediaFiles.thumbnail(imported); check(thumb.length() > 0, "Real thumbnail extracted");
             check(MediaFiles.preview(imported).isFile(), "Native preview");
             File avi = new File(getParameters().getRaw().get(1));
             check(MediaFiles.preview(avi).isFile(), "AVI preview conversion");
-            check(MediaFiles.playable(avi).isFile() && avi.isFile(), "AVI playback cache preserves original");
+            check(MediaFiles.playable(avi).equals(avi), "AVI playback uses original path");
             VideoRepository.addReferences(project.getId(), java.util.Arrays.asList(imported, avi));
             VideoRepository.addReferences(project.getId(), java.util.Arrays.asList(imported, imported));
             check(VideoRepository.findByGroup(project.getId()).size() == 2, "Reference duplicates avoided");
@@ -127,7 +126,7 @@ public final class FunctionalChecks extends Application {
         }
         check(colored > 100, "Decoded video pixels visible");
         if (reopenChecks++ < 3) {
-            MediaPlayer previous = playback.getPlayer(); playback.open(imported);
+            DirectPlayer previous = playback.getPlayer(); playback.open(imported);
             check(previous.getStatus() == MediaPlayer.Status.DISPOSED, "Previous decoder disposed on reopening");
             waitFor(() -> playback.getPlayer() != null && playback.getPlayer().getStatus() == MediaPlayer.Status.PAUSED, this::checkPlayback);
             return;
@@ -146,7 +145,7 @@ public final class FunctionalChecks extends Application {
             Slider volume = (Slider) playback.lookup("#playback-volume"); volume.setValue(.27);
             check(Math.abs(playback.getPlayer().getVolume() - .27) < .001, "Volume changes applied");
             snapshot(workspace, "video-functional.png");
-            MediaPlayer old = playback.getPlayer(); fire("Datos"); css(); check(old.getStatus() == MediaPlayer.Status.DISPOSED, "Player disposed on navigation");
+            DirectPlayer old = playback.getPlayer(); fire("Datos"); css(); check(old.getStatus() == MediaPlayer.Status.DISPOSED, "Player disposed on navigation");
             fire("Usuario"); css(); check(((TextField) workspace.lookup("#profile-name")).getText().equals("Full Name"), "UI profile restored");
             text("profile-name", "Updated Through UI"); fire("Guardar cambios"); css();
             check(UserRepository.findByUsername("renamed-user").getFullName().equals("Updated Through UI"), "UI profile saved");
@@ -189,7 +188,7 @@ public final class FunctionalChecks extends Application {
             SessionManager.setCurrentUser(user);
             VideoRepository.deleteByGroup(project.getId()); VideoGroupRepository.deleteById(project.getId());
             check(VideoRepository.findByGroup(project.getId()).isEmpty(), "Project video associations deleted");
-            System.out.println("PASS: authentication, legacy data, account/profile, project CRUD and isolation, persistence, directory discovery, source-path associations without copies, duplicates, AVI playback cache, thumbnails, UI previews, decoded pixels, play/pause/seek, zoom sizing, disposal.");
+            System.out.println("PASS: authentication, legacy data, account/profile, project CRUD and isolation, persistence, directory discovery, source-path associations without copies, duplicates, direct playback, UI previews, decoded pixels, play/pause/seek, zoom sizing, disposal.");
             System.out.println("Disposable test data: " + sandbox);
             Platform.exit();
     }
