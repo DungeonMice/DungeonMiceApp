@@ -1,45 +1,47 @@
 package com.phys.dungeonmiceapp;
 
-import com.phys.dungeonmiceapp.database.DatabaseManager;
 import javafx.application.Application;
-import javafx.fxml.FXMLLoader;
+import com.phys.dungeonmiceapp.ui.WorkspaceView;
 import javafx.scene.Scene;
-import javafx.scene.image.Image;
 import javafx.stage.Stage;
-
+import javafx.stage.Screen;
+import javafx.geometry.Rectangle2D;
+import com.phys.dungeonmiceapp.database.DatabaseManager;
 
 public class App extends Application {
+    private WorkspaceView view;
 
     @Override
     public void start(Stage stage) throws Exception {
-
-        DatabaseManager.connect();
-
-        FXMLLoader fxmlLoader = new FXMLLoader(
-                App.class.getResource("/com/phys/dungeonmiceapp/login.fxml")
-        );
-
-        Scene scene = new Scene(fxmlLoader.load());
-
-        Image image = new Image(
-                App.class.getResource("/images/LOGO.jpg").toExternalForm()
-        );
-
-        stage.getIcons().add(image);
+        try {
+            DatabaseManager.connect();
+        } catch (RuntimeException e) {
+            javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR,
+                    "No se pudo abrir la base de datos. Comprueba DB_MASTER_PASSWORD y el archivo data/database.enc.");
+            alert.showAndWait(); javafx.application.Platform.exit(); return;
+        }
+        view = new WorkspaceView(stage);
+        Rectangle2D available = Screen.getPrimary().getVisualBounds();
+        Scene scene = new Scene(view, Math.min(1440, available.getWidth()), Math.min(900, available.getHeight()));
+        scene.getStylesheets().add(App.class.getResource("/styles/workspace.css").toExternalForm());
+        stage.initStyle(javafx.stage.StageStyle.UNDECORATED);
         stage.setTitle("Dungeon Mice");
         stage.setScene(scene);
-
-        stage.setMinWidth(1400);
-        stage.setMinHeight(900);
-
-        stage.setWidth(1400);
-        stage.setHeight(900);
-
+        stage.setMinWidth(Math.min(1000, available.getWidth()));
+        stage.setMinHeight(Math.min(740, available.getHeight()));
         stage.show();
+        stage.centerOnScreen();
+        if (getParameters().getRaw().contains("--ui-snapshots")) {
+            javafx.application.Platform.runLater(() -> view.writeSnapshots());
+        }
     }
 
     public static void main(String[] args) {
-        launch();
+        launch(args);
     }
 
+    @Override
+    public void stop() {
+        if (view != null) view.close();
+    }
 }

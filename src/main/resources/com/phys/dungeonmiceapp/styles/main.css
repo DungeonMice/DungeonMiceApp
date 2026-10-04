@@ -266,3 +266,8 @@
     -fx-prompt-text-fill: #aaaaaa;
     -fx-background-radius: 5;
 }
+.loading-label {
+    -fx-font-size: 14px;
+    -fx-text-fill: #ff6600;
+    -fx-font-weight: bold;
+}

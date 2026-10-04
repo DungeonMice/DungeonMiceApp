@@ -94,15 +94,26 @@
                     maxWidth="250"/>
 
             <!-- ================= VIDEO PLAYER SECTION ================= -->
-            <Label text="Reproductor de video"
-                   styleClass="section-title"/>
+            <HBox alignment="CENTER_LEFT" spacing="10">
+                <Label text="Reproductor de video"
+                       styleClass="section-title"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="loadingLabel"
+                       text="Cargando video..."
+                       visible="false"
+                       styleClass="loading-label"/>
+            </HBox>
 
             <!-- VIDEO CONTAINER -->
             <StackPane styleClass="video-container"
                        fx:id="videoContainer"
-                       prefHeight="520"
+                       minHeight="0"
+                       maxHeight="Infinity"
                        VBox.vgrow="ALWAYS">
-
+                <ProgressIndicator fx:id="loadingIndicator"
+                                   visible="false"
+                                   maxWidth="100"
+                                   maxHeight="100"/>
                 <Group fx:id="zoomGroup">
                     <MediaView fx:id="mediaView"
                                preserveRatio="true"/>
