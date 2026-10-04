@@ -69,7 +69,15 @@ public final class WindowControlsChecks extends Application {
         check(button.isPickOnBounds() && button.contains(0.5, 0.5) && button.contains(39.5, 0.5)
                 && button.contains(0.5, 37.5) && button.contains(39.5, 37.5), "All button corners accept input: " + id);
         check(button.getGraphic().isMouseTransparent(), "Icon does not intercept button input: " + id);
-        button.fire();
+        javafx.geometry.Point2D scene = button.localToScene(39.5, 37.5);
+        javafx.geometry.Point2D screen = button.localToScreen(39.5, 37.5);
+        javafx.event.Event.fireEvent(button, new MouseEvent(MouseEvent.MOUSE_PRESSED, scene.getX(), scene.getY(), screen.getX(), screen.getY(),
+                MouseButton.PRIMARY, 1, false, false, false, false, true, false, false, false, false, true,
+                new PickResult(button, scene.getX(), scene.getY())));
+        check(button.isArmed(), "Mouse press arms button at its edge: " + id);
+        javafx.event.Event.fireEvent(button, new MouseEvent(MouseEvent.MOUSE_RELEASED, scene.getX(), scene.getY(), screen.getX(), screen.getY(),
+                MouseButton.PRIMARY, 1, false, false, false, false, false, false, false, false, false, true,
+                new PickResult(button, scene.getX(), scene.getY())));
     }
     private Rectangle2D bounds() { return new Rectangle2D(stage.getX(), stage.getY(), stage.getWidth(), stage.getHeight()); }
     private static boolean equal(Rectangle2D a, Rectangle2D b) {

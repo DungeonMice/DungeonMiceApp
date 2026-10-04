@@ -1,4 +1,4 @@
-param([string]$JavaPath = '')
+param([string]$JavaPath = '', [string]$CrossMazePath = '')
 $ErrorActionPreference = 'Stop'
 $testProject = Split-Path -Parent $PSScriptRoot
 Push-Location -LiteralPath $testProject
@@ -26,4 +26,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Window controls checks failed.' }
     & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.WindowControlsChecks --native-close
     if ($LASTEXITCODE -ne 0) { throw 'Native close checks failed.' }
+    $startupDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('dungeonmice-startup-' + [guid]::NewGuid())
+    & $JavaPath "-Ddungeonmice.database=$startupDirectory/data/database.enc" "-Ddungeonmice.storage=$startupDirectory" -cp "$testClasspath;$testFx" com.phys.dungeonmiceapp.App --ui-snapshots
+    if ($LASTEXITCODE -ne 0) { throw 'Direct Java application startup failed.' }
+    if ($CrossMazePath) {
+        & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.CrossMazeChecks $CrossMazePath
+        if ($LASTEXITCODE -ne 0) { throw 'CrossMaze real-video checks failed.' }
+    }
 } finally { Pop-Location }

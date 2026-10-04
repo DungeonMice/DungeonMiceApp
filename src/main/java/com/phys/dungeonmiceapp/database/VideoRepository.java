@@ -8,10 +8,42 @@ import com.phys.dungeonmiceapp.session.SessionManager;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+import com.phys.dungeonmiceapp.ui.MediaFiles;
+import com.phys.dungeonmiceapp.model.VideoGroup;
 
 public class VideoRepository {
 
     private static final String COLLECTION = "videos";
+
+    public static void addReferences(String groupId, List<File> sources) throws IOException {
+        String ownerId = SessionManager.getCurrentUser().getId();
+        VideoGroup group = VideoGroupRepository.findById(groupId);
+        if (group == null || !ownerId.equals(group.getOwnerId())) throw new IllegalArgumentException("Proyecto no disponible.");
+        List<File> references = MediaFiles.references(sources);
+        Set<Path> paths = new HashSet<>();
+        for (Video existing : findByGroup(groupId)) paths.add(MediaFiles.resolve(existing.getFilePath()).getCanonicalFile().toPath());
+        JsonArray collection = DatabaseManager.getCollection(COLLECTION);
+        List<JsonObject> added = new ArrayList<>();
+        for (File source : references) {
+            if (!paths.add(source.toPath())) continue;
+            JsonObject video = new JsonObject();
+            video.addProperty("_id", UUID.randomUUID().toString());
+            video.addProperty("title", source.getName()); video.addProperty("filePath", source.getAbsolutePath());
+            video.addProperty("groupId", groupId); video.addProperty("ownerId", ownerId);
+            video.addProperty("uploadedAt", new Date().toString());
+            collection.add(video); added.add(video);
+        }
+        if (!added.isEmpty()) {
+            try { DatabaseManager.persist(); }
+            catch (RuntimeException ex) { for (JsonObject video : added) collection.remove(video); throw ex; }
+        }
+    }
 
     // CREATE
     public static void addVideo(String groupId, String title, String filePath) {

@@ -58,12 +58,22 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private boolean maximized;
     private Rectangle2D restoreBounds;
     private boolean closed;
+    private final javafx.animation.PauseTransition directoryDelay = new javafx.animation.PauseTransition(javafx.util.Duration.millis(350));
+    private ListView<File> projectFiles;
+    private Label directoryMessage;
+    private List<File> directoryVideos = Collections.emptyList();
+    private long directoryGeneration;
+    private final Map<PlaybackPane, Task<File>> playbackRequests = new HashMap<>();
+    private final ExecutorService mediaPreparation = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "dungeonmice-preparation"); thread.setDaemon(true); return thread;
+    });
 
     public WorkspaceView(Stage stage) {
         this.stage = stage;
         stage.getIcons().add(brandLogo);
         getStyleClass().add("workspace");
         stage.setOnCloseRequest(e -> { e.consume(); exitApplication(); });
+        location.textProperty().addListener((obs, old, value) -> scheduleDirectoryScan());
         show("login");
     }
 
@@ -72,6 +82,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private String username() { return SessionManager.isLoggedIn() ? SessionManager.getCurrentUser().getUsername() : ""; }
 
     private void show(String next) {
+        directoryDelay.stop(); directoryGeneration++; projectFiles = null; directoryMessage = null;
         disposePlayers();
         if (!next.equals("login") && !next.equals("register") && !SessionManager.isLoggedIn()) next = "login";
         screen = next;
@@ -267,7 +278,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         };
         list.getSelectionModel().selectedItemProperty().addListener((obs, old, item) -> { selectedProject = item; refresh.run(); });
         videos.getSelectionModel().selectedItemProperty().addListener((obs, old, item) -> {
-            selectedVideo = item; open.setDisable(item == null); if (item != null) preview.open(MediaFiles.resolve(item.getFilePath())); else preview.close();
+            selectedVideo = item; open.setDisable(item == null); if (item != null) openVideo(preview, MediaFiles.resolve(item.getFilePath()), true); else { cancelPreparation(preview); preview.close(); }
         });
         videos.setOnMouseClicked(e -> { if (e.getClickCount() == 2 && selectedVideo != null) show("video"); });
         list.getSelectionModel().select(selectedProject); refresh.run();
@@ -293,7 +304,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
 
     private void beginProject(boolean edit) {
         if (edit && selectedProject == null) return;
-        pendingVideos.clear(); VideoGroup p = edit ? selectedProject : null;
+        pendingVideos.clear(); directoryVideos = Collections.emptyList(); VideoGroup p = edit ? selectedProject : null;
         projectName.setText(p == null ? "" : p.getName()); description.setText(p == null ? "" : p.getDescription());
         category.setText(p == null ? "" : p.getCategory()); owner.setText(p == null ? "" : p.getResponsible());
         participants.setText(p == null ? "" : p.getParticipants()); location.setText(p == null ? "" : p.getLocation()); show(edit ? "edit-project" : "create-project");
@@ -311,26 +322,78 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         }), location); path.getStyleClass().add("path-field"); HBox.setHgrow(location, Priority.ALWAYS); path.setMaxWidth(195);
         fields.add(new Label("Ubicaci\u00f3n en el sistema"), 0, 4); fields.add(path, 1, 4); addField(fields, 5, "Descripci\u00f3n", description);
         VBox left = new VBox(32, fields); if (edit) left.getChildren().add(button("Eliminar proyecto", "danger wide", this::deleteProject));
-        FlowPane thumbnails = new FlowPane(12, 14); thumbnails.setPadding(new Insets(12));
-        if (edit) for (Video video : VideoRepository.findByGroup(selectedProject.getId())) thumbnails.getChildren().add(thumbnail(video.getTitle(), MediaFiles.resolve(video.getFilePath()), () -> previewFile(MediaFiles.resolve(video.getFilePath()), null)));
-        for (File file : pendingVideos) thumbnails.getChildren().add(thumbnail(file.getName(), file, () -> previewFile(file, null)));
-        ScrollPane scroll = new ScrollPane(thumbnails); scroll.setFitToWidth(true); scroll.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
-        BorderPane gallery = new BorderPane(scroll); gallery.getStyleClass().add("gallery"); gallery.setPrefHeight(390);
-        Button add = button("A\u00f1adir video", "primary", () -> chooseVideo(file -> { pendingVideos.add(file); show(screen); }));
-        BorderPane.setAlignment(add, Pos.CENTER); BorderPane.setMargin(add, new Insets(15)); gallery.setBottom(add);
+        projectFiles = new ListView<>(); projectFiles.setId("project-files"); projectFiles.setPlaceholder(new Label("No hay videos"));
+        projectFiles.setCellFactory(list -> new ListCell<File>() {
+            @Override protected void updateItem(File file, boolean empty) {
+                super.updateItem(file, empty); setText(empty || file == null ? null : file.getName());
+                setTooltip(empty || file == null ? null : new Tooltip(file.getAbsolutePath()));
+            }
+        });
+        projectFiles.setOnMouseClicked(e -> { if (e.getClickCount() == 2 && projectFiles.getSelectionModel().getSelectedItem() != null) previewFile(projectFiles.getSelectionModel().getSelectedItem(), null); });
+        directoryMessage = new Label(); directoryMessage.setWrapText(true); directoryMessage.setId("directory-status");
+        BorderPane gallery = new BorderPane(projectFiles); gallery.setTop(directoryMessage); gallery.getStyleClass().add("gallery"); gallery.setPrefHeight(390);
+        Button add = button("A\u00f1adir video", "primary", () -> chooseVideo(file -> { pendingVideos.add(file); refreshProjectFiles(); }));
+        ListView<File> list = projectFiles;
+        Button preview = button("Vista previa", "outline", () -> previewFile(list.getSelectionModel().getSelectedItem(), null));
+        preview.disableProperty().bind(list.getSelectionModel().selectedItemProperty().isNull());
+        HBox actions = new HBox(10, preview, add); actions.setAlignment(Pos.CENTER);
+        BorderPane.setMargin(actions, new Insets(15)); gallery.setBottom(actions);
         VBox right = new VBox(16, heading("Videos asociados", false), gallery); HBox columns = new HBox(35, left, right); HBox.setHgrow(right, Priority.ALWAYS); columns.setPadding(new Insets(26, 0, 25, 0)); page.setCenter(columns);
         HBox footer = new HBox(10, button("Cancelar", "outline", () -> { pendingVideos.clear(); show("projects"); }), button(edit ? "Guardar cambios" : "Crear proyecto", "primary", () -> saveProject(edit)));
-        footer.setAlignment(Pos.CENTER); page.setBottom(footer); return page;
+        footer.setAlignment(Pos.CENTER); page.setBottom(footer); refreshProjectFiles(); scheduleDirectoryScan(); return page;
+    }
+
+    private void refreshProjectFiles() {
+        if (projectFiles == null) return;
+        Map<java.nio.file.Path, File> files = new LinkedHashMap<>();
+        if (screen.equals("edit-project") && selectedProject != null) {
+            for (Video video : VideoRepository.findByGroup(selectedProject.getId())) {
+                File file = MediaFiles.resolve(video.getFilePath()); files.put(file.toPath().toAbsolutePath().normalize(), file);
+            }
+        }
+        for (File file : directoryVideos) files.put(file.toPath().toAbsolutePath().normalize(), file);
+        for (File file : pendingVideos) files.put(file.toPath().toAbsolutePath().normalize(), file);
+        projectFiles.getItems().setAll(files.values());
+    }
+
+    private void scheduleDirectoryScan() {
+        if (projectFiles == null) return;
+        long generation = ++directoryGeneration;
+        directoryDelay.stop(); directoryVideos = Collections.emptyList(); refreshProjectFiles();
+        directoryMessage.setText(location.getText().trim().isEmpty() ? "" : "Buscando videos...");
+        String directory = location.getText();
+        directoryDelay.setOnFinished(e -> background(() -> MediaFiles.videosInDirectory(directory), videos -> {
+            if (generation != directoryGeneration || projectFiles == null) return;
+            directoryVideos = videos; refreshProjectFiles(); directoryMessage.setText(videos.size() + " videos en el directorio");
+        }, ex -> {
+            if (generation != directoryGeneration || projectFiles == null) return;
+            directoryMessage.setText(ex.getMessage());
+        }));
+        directoryDelay.playFromStart();
     }
 
     private void saveProject(boolean edit) {
+        if (projectName.getText().trim().isEmpty()) { error(new IllegalArgumentException("El nombre del proyecto es obligatorio.")); return; }
+        if (location.getText().trim().isEmpty()) {
+            try { finishSaveProject(edit, MediaFiles.references(pendingVideos)); } catch (Exception ex) { error(ex); }
+            return;
+        }
+        String directory = location.getText(); List<File> selected = new ArrayList<>(pendingVideos);
+        setContentBusy(true); directoryDelay.stop(); directoryGeneration++;
+        background(() -> {
+            List<File> sources = new ArrayList<>(MediaFiles.videosInDirectory(directory)); sources.addAll(selected);
+            return MediaFiles.references(sources);
+        }, sources -> { setContentBusy(false); finishSaveProject(edit, sources); }, ex -> { setContentBusy(false); error(ex); });
+    }
+
+    private void finishSaveProject(boolean edit, List<File> sources) {
+        boolean saved = false;
         try {
-            selectedProject = VideoGroupRepository.saveProject(edit ? selectedProject.getId() : null, projectName.getText(), description.getText(), category.getText(), owner.getText(), participants.getText(), location.getText());
-            if (pendingVideos.isEmpty()) { show("projects"); return; }
-            List<File> sources = new ArrayList<>(pendingVideos);
-            show("edit-project");
-            importVideos(sources, () -> { pendingVideos.clear(); show("projects"); });
-        } catch (RuntimeException e) { error(e); }
+            selectedProject = VideoGroupRepository.saveProject(edit ? selectedProject.getId() : null, projectName.getText(), description.getText(), category.getText(), owner.getText(), participants.getText(), location.getText().trim());
+            saved = true;
+            VideoRepository.addReferences(selectedProject.getId(), sources);
+            pendingVideos.clear(); show("projects");
+        } catch (Exception e) { if (saved) show("edit-project"); error(e); }
     }
 
     private void deleteProject() {
@@ -339,17 +402,9 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         catch (RuntimeException e) { error(e); }
     }
 
-    private Node thumbnail(String title, File source, Runnable action) {
-        ImageView image = new ImageView(); image.setFitWidth(160); image.setFitHeight(90); image.setPreserveRatio(true);
-        Label state = new Label("Cargando..."); StackPane frame = new StackPane(image, state); frame.setMinSize(160, 90); frame.setMaxSize(160, 90); frame.getStyleClass().add("thumbnail");
-        background(() -> MediaFiles.thumbnail(source), file -> { image.setImage(new Image(file.toURI().toString())); state.setVisible(false); }, ex -> state.setText("Sin miniatura"));
-        Label label = new Label(title); label.setMaxWidth(160); label.setTooltip(new Tooltip(title));
-        VBox tile = new VBox(7, frame, label); tile.setAlignment(Pos.CENTER); tile.setOnMouseClicked(e -> action.run()); tile.setStyle("-fx-cursor: hand;"); return tile;
-    }
-
     private void chooseVideo(Consumer<File> accepted) {
         FileChooser chooser = new FileChooser(); chooser.setTitle("Seleccionar video");
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Videos", "*.mp4", "*.m4v", "*.mov", "*.avi", "*.mkv", "*.wmv"));
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Videos", "*.mp4", "*.m4v", "*.mov", "*.avi", "*.mkv", "*.wmv", "*.webm", "*.mpg", "*.mpeg"));
         File file = chooser.showOpenDialog(stage); if (file != null) previewFile(file, accepted);
     }
 
@@ -362,33 +417,40 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         HBox actions = accepted == null ? new HBox(cancel) : new HBox(cancel, use); actions.setSpacing(10); actions.setAlignment(Pos.CENTER_RIGHT);
         VBox content = new VBox(14, state, preview, actions); content.setPadding(new Insets(20)); VBox.setVgrow(preview, Priority.ALWAYS);
         Scene scene = new Scene(content, 800, 520); scene.getStylesheets().add(getClass().getResource("/styles/workspace.css").toExternalForm()); dialog.setScene(scene);
-        dialog.setOnHidden(e -> preview.close()); dialog.show();
-        background(() -> MediaFiles.preview(file), ready -> {
+        dialog.setOnHidden(e -> { cancelPreparation(preview); preview.close(); }); dialog.show();
+        prepareVideo(preview, file, true, ready -> {
             if (!dialog.isShowing()) return; state.setText(file.getName()); preview.open(ready); use.setDisable(false);
         }, ex -> { if (dialog.isShowing()) { state.setText("No se pudo generar el previo: " + ex.getMessage()); use.setDisable(false); } });
     }
 
-    private void importVideos(List<File> sources, Runnable after) {
+    private void associateVideos(List<File> sources, Runnable after) {
         if (selectedProject == null) return;
-        String groupId = selectedProject.getId(), userId = SessionManager.getCurrentUser().getId();
-        setContentBusy(true);
-        Stage progress = new Stage(); progress.initOwner(stage); progress.setTitle("Importando videos");
-        Label message = new Label("Procesando videos..."); VBox panel = new VBox(20, message, new ProgressIndicator()); panel.setPadding(new Insets(30)); panel.setAlignment(Pos.CENTER);
-        progress.setScene(new Scene(panel, 340, 160)); progress.setOnCloseRequest(e -> e.consume()); progress.show();
-        Task<List<File>> task = new Task<List<File>>() {
-            @Override protected List<File> call() throws Exception {
-                List<File> imported = new ArrayList<>();
-                try { for (File source : sources) { updateMessage("Importando " + source.getName()); imported.add(MediaFiles.importVideo(source, userId, groupId)); } return imported; }
-                catch (Exception e) { for (File output : imported) java.nio.file.Files.deleteIfExists(output.toPath()); throw e; }
+        try { VideoRepository.addReferences(selectedProject.getId(), sources); after.run(); }
+        catch (Exception ex) { error(ex); }
+    }
+
+    private void openVideo(PlaybackPane player, File source, boolean preview) {
+        prepareVideo(player, source, preview, player::open,
+                ex -> player.showError("No se pudo abrir " + source.getName() + ": " + ex.getMessage()));
+    }
+
+    private void prepareVideo(PlaybackPane player, File source, boolean preview, Consumer<File> ready, Consumer<Throwable> failure) {
+        cancelPreparation(player); player.prepare();
+        Task<File> task = new Task<File>() {
+            @Override protected File call() throws Exception {
+                return preview ? MediaFiles.preview(source, this::updateMessage) : MediaFiles.playable(source, this::updateMessage);
             }
         };
-        message.textProperty().bind(task.messageProperty());
-        task.setOnSucceeded(e -> {
-            progress.close(); if (closed) return; setContentBusy(false);
-            try { for (int i = 0; i < sources.size(); i++) VideoRepository.addVideo(groupId, sources.get(i).getName(), task.getValue().get(i).getAbsolutePath()); after.run(); }
-            catch (RuntimeException ex) { error(ex); }
-        });
-        task.setOnFailed(e -> { progress.close(); if (!closed) { setContentBusy(false); error(task.getException()); } }); files.submit(task);
+        playbackRequests.put(player, task);
+        task.messageProperty().addListener((obs, old, text) -> { if (playbackRequests.get(player) == task && !closed) player.preparationMessage(text); });
+        task.setOnSucceeded(e -> { if (playbackRequests.get(player) == task && !closed) ready.accept(task.getValue()); });
+        task.setOnFailed(e -> { if (playbackRequests.get(player) == task && !closed) failure.accept(task.getException()); });
+        mediaPreparation.execute(task);
+    }
+
+    private void cancelPreparation(PlaybackPane player) {
+        Task<File> task = playbackRequests.remove(player);
+        if (task != null) task.cancel(true);
     }
 
     private Node video() {
@@ -411,10 +473,10 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             @Override public String toString(Video value) { return value == null ? "Seleccionar video" : value.getTitle(); }
             @Override public Video fromString(String text) { return null; }
         });
-        choices.valueProperty().addListener((obs, old, item) -> { selectedVideo = item; if (item != null) player.open(MediaFiles.resolve(item.getFilePath())); else player.close(); });
+        choices.valueProperty().addListener((obs, old, item) -> { selectedVideo = item; if (item != null) openVideo(player, MediaFiles.resolve(item.getFilePath()), false); else { cancelPreparation(player); player.close(); } });
         Video initial = selectedVideo == null ? null : videos.stream().filter(v -> v.getId().equals(selectedVideo.getId())).findFirst().orElse(null);
         choices.setValue(initial == null && !videos.isEmpty() ? videos.get(0) : initial);
-        Button load = button("A\u00f1adir video", "outline", () -> chooseVideo(file -> importVideos(Collections.singletonList(file), () -> { List<Video> all = VideoRepository.findByGroup(selectedProject.getId()); selectedVideo = all.get(all.size() - 1); show("video"); })));
+        Button load = button("A\u00f1adir video", "outline", () -> chooseVideo(file -> associateVideos(Collections.singletonList(file), () -> { selectedVideo = VideoRepository.findByGroup(selectedProject.getId()).stream().filter(v -> MediaFiles.resolve(v.getFilePath()).equals(file)).findFirst().orElse(null); show("video"); })));
         Button remove = button("Eliminar video", "outline", () -> {
             if (selectedVideo != null && confirm("Eliminar video", "\u00bfEliminar este video del proyecto? El archivo original se conservar\u00e1.")) {
                 VideoRepository.deleteById(selectedVideo.getId()); selectedVideo = null; show("video");
@@ -470,6 +532,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private boolean confirm(String title, String text) { Alert alert = new Alert(Alert.AlertType.CONFIRMATION, text, ButtonType.OK, ButtonType.CANCEL); alert.initOwner(stage); alert.setTitle(title); alert.setHeaderText(null); return alert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK; }
     private void error(Throwable ex) { Alert alert = new Alert(Alert.AlertType.ERROR, ex.getMessage() == null ? "No se pudo completar la operaci\u00f3n." : ex.getMessage()); alert.initOwner(stage); alert.setTitle("Dungeon Mice"); alert.setHeaderText(null); alert.showAndWait(); }
     private void disposePlayers() {
+        for (Task<File> task : playbackRequests.values()) task.cancel(true);
+        playbackRequests.clear();
         for (PlaybackPane player : players) {
             try { player.close(); } catch (RuntimeException ex) { System.err.println("No se pudo liberar el reproductor: " + ex.getMessage()); }
         }
@@ -478,7 +542,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     @Override public void close() {
         if (closed) return;
         closed = true;
-        try { disposePlayers(); } finally { files.shutdownNow(); }
+        directoryDelay.stop(); directoryGeneration++;
+        try { disposePlayers(); } finally { files.shutdownNow(); mediaPreparation.shutdownNow(); }
     }
 
     private Button iconButton(String kind, String tip, Runnable action) {

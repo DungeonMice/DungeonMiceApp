@@ -36,6 +36,19 @@ public final class FunctionalChecks extends Application {
             System.setProperty("dungeonmice.database", sandbox.resolve("data/database.enc").toString());
             System.setProperty("dungeonmice.storage", sandbox.toString());
             DatabaseManager.connect();
+            Path unicodeDirectory = Files.createDirectories(sandbox.resolve("unicode-paths"));
+            Path decomposed = unicodeDirectory.resolve("Di\u0301a 1-1N raya raya.mov");
+            Path composed = unicodeDirectory.resolve("D\u00eda 1-1N raya raya.mov");
+            Files.writeString(decomposed, "decomposed name");
+            check(MediaFiles.resolve(decomposed.toString()).toPath().equals(decomposed), "Exact decomposed Unicode path preserved");
+            check(MediaFiles.resolve(sandbox.relativize(decomposed).toString()).toPath().equals(decomposed), "Relative Unicode path preserved");
+            Files.writeString(composed, "composed name");
+            check(MediaFiles.resolve(decomposed.toString()).toPath().equals(decomposed), "Exact path wins when both Unicode names exist");
+            check(MediaFiles.resolve(composed.toString()).toPath().equals(composed), "Composed Unicode path preserved");
+            Files.delete(decomposed);
+            check(MediaFiles.resolve(decomposed.toString()).toPath().equals(composed), "Legacy Unicode fallback when exact name is missing");
+            Files.delete(composed);
+            check(!MediaFiles.resolve(decomposed.toString()).isFile(), "Missing Unicode file remains missing");
             check(UserRepository.login("admin", "admin123") != null, "Legacy admin login");
             check(UserRepository.login("admin", "wrong") == null, "Wrong password rejected");
             user = UserRepository.register("check-user", "check-password", "user", "Test Person", "ABC", "");
@@ -59,17 +72,30 @@ public final class FunctionalChecks extends Application {
             expect(() -> VideoGroupRepository.saveProject(project.getId(), "Hijack", "", "", "", "", ""));
             SessionManager.setCurrentUser(user);
             File fixture = new File(getParameters().getRaw().get(0));
-            imported = MediaFiles.importVideo(fixture, user.getId(), project.getId());
-            check(imported.isFile() && fixture.isFile(), "Imported copy and original exist");
+            imported = fixture.getCanonicalFile();
             File thumb = MediaFiles.thumbnail(imported); check(thumb.length() > 0, "Real thumbnail extracted");
             check(MediaFiles.preview(imported).isFile(), "Native preview");
             File avi = new File(getParameters().getRaw().get(1));
             check(MediaFiles.preview(avi).isFile(), "AVI preview conversion");
-            File converted = MediaFiles.importVideo(avi, user.getId(), project.getId());
-            check(converted.isFile(), "AVI import conversion");
-            VideoRepository.addVideo(project.getId(), "Fixture", imported.getAbsolutePath());
-            VideoRepository.addVideo(project.getId(), "Converted AVI", converted.getAbsolutePath());
-            check(VideoRepository.findByGroup(project.getId()).size() == 2, "Videos saved");
+            check(MediaFiles.playable(avi).isFile() && avi.isFile(), "AVI playback cache preserves original");
+            VideoRepository.addReferences(project.getId(), java.util.Arrays.asList(imported, avi));
+            VideoRepository.addReferences(project.getId(), java.util.Arrays.asList(imported, imported));
+            check(VideoRepository.findByGroup(project.getId()).size() == 2, "Reference duplicates avoided");
+            check(VideoRepository.findByGroup(project.getId()).get(0).getFilePath().equals(imported.getAbsolutePath()), "Original absolute path stored");
+            check(!Files.exists(sandbox.resolve("videos")), "No project video copies created");
+            SessionManager.setCurrentUser(another);
+            expect(() -> { try { VideoRepository.addReferences(project.getId(), java.util.Collections.singletonList(imported)); }
+                catch (java.io.IOException ex) { throw new IllegalStateException(ex); } });
+            SessionManager.setCurrentUser(user);
+            Path directory = Files.createDirectories(sandbox.resolve("external-source"));
+            Files.copy(imported.toPath(), directory.resolve("First.MP4"));
+            Files.copy(avi.toPath(), directory.resolve("Second.avi"));
+            Files.writeString(directory.resolve("notes.txt"), "Not a video");
+            Files.createDirectories(directory.resolve("nested"));
+            check(MediaFiles.videosInDirectory(directory.toString()).size() == 2, "Directory filtering and uppercase extension");
+            check(MediaFiles.videosInDirectory("").isEmpty(), "Empty directory is optional");
+            try { MediaFiles.videosInDirectory(directory.resolve("missing").toString()); throw new AssertionError("Missing directory accepted"); }
+            catch (java.io.IOException expected) { }
             DatabaseManager.connect();
             check(UserRepository.login("renamed-user", "new-password").getIdentification().equals("ID42"), "Account persisted after reload");
             check(VideoGroupRepository.findById(project.getId()).getName().equals("Project Renamed"), "Project persisted after reload");
@@ -125,9 +151,35 @@ public final class FunctionalChecks extends Application {
             text("profile-name", "Updated Through UI"); fire("Guardar cambios"); css();
             check(UserRepository.findByUsername("renamed-user").getFullName().equals("Updated Through UI"), "UI profile saved");
             snapshot(workspace, "profile-saved.png");
-            fire("Crear proyecto"); css(); text("project-name", "UI Project"); text("project-description", "Created in the interface"); fire("Crear proyecto"); css();
+            fire("Crear proyecto"); css(); text("project-name", "UI Project"); text("project-description", "Created in the interface");
+            text("project-location", sandbox.resolve("missing").toString());
+            text("project-location", sandbox.resolve("external-source").toString());
+            waitFor(() -> workspace.lookup("#project-files") != null && ((ListView<?>) workspace.lookup("#project-files")).getItems().size() == 2, () -> {
+                check(!Files.exists(sandbox.resolve("videos")), "Directory preview does not copy videos");
+                snapshot(workspace, "directory-create.png");
+                fire("Crear proyecto");
+                waitFor(() -> workspace.lookup("#projects-list") != null, this::afterDirectorySave);
+            });
+    }
+
+    private void afterDirectorySave() {
+            css();
             check(VideoGroupRepository.findGroupsByCurrentUser().size() == 3, "UI project creation");
+            VideoGroup directoryProject = VideoGroupRepository.findGroupsByCurrentUser().stream().filter(p -> p.getName().equals("UI Project")).findFirst().orElseThrow();
+            check(VideoRepository.findByGroup(directoryProject.getId()).size() == 2, "UI directory videos associated");
+            check(VideoRepository.findByGroup(directoryProject.getId()).stream().allMatch(v -> v.getFilePath().startsWith(sandbox.resolve("external-source").toString())), "UI stores source paths");
+            check(!Files.exists(sandbox.resolve("videos")), "Saving does not copy or convert videos");
+            try {
+                check(java.util.Arrays.equals(Files.readAllBytes(imported.toPath()), Files.readAllBytes(sandbox.resolve("external-source/First.MP4"))), "Source video bytes unchanged");
+            } catch (java.io.IOException ex) { throw new IllegalStateException(ex); }
             fire("Editar proyecto"); css(); text("project-name", "UI Project Updated"); fire("Guardar cambios"); css();
+            waitFor(() -> workspace.lookup("#projects-list") != null, () -> {
+                check(VideoRepository.findByGroup(directoryProject.getId()).size() == 2, "Repeated directory save does not duplicate videos");
+                finishChecks();
+            });
+    }
+
+    private void finishChecks() {
             check(VideoGroupRepository.findGroupsByCurrentUser().stream().anyMatch(p -> p.getName().equals("UI Project Updated")), "UI project edit");
             logout(workspace); css(); check(!SessionManager.isLoggedIn() && workspace.lookup("#login-password") != null, "UI logout");
             text("login-username", "renamed-user"); text("login-password", "wrong"); fire("Iniciar sesi\u00f3n"); css(); check(!SessionManager.isLoggedIn(), "UI invalid login rejected");
@@ -137,7 +189,7 @@ public final class FunctionalChecks extends Application {
             SessionManager.setCurrentUser(user);
             VideoRepository.deleteByGroup(project.getId()); VideoGroupRepository.deleteById(project.getId());
             check(VideoRepository.findByGroup(project.getId()).isEmpty(), "Project video associations deleted");
-            System.out.println("PASS: authentication, legacy data, account/profile, project CRUD and isolation, persistence, imports, AVI conversion, thumbnails, UI previews, decoded pixels, play/pause/seek, zoom sizing, disposal.");
+            System.out.println("PASS: authentication, legacy data, account/profile, project CRUD and isolation, persistence, directory discovery, source-path associations without copies, duplicates, AVI playback cache, thumbnails, UI previews, decoded pixels, play/pause/seek, zoom sizing, disposal.");
             System.out.println("Disposable test data: " + sandbox);
             Platform.exit();
     }

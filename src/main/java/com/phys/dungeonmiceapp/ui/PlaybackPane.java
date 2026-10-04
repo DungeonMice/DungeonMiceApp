@@ -96,6 +96,10 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         open(file, 0);
     }
 
+    public void prepare() { close(); status.setText("Preparando video..."); }
+    public void preparationMessage(String message) { if (player == null) status.setText(message); }
+    public void showError(String message) { close(); fail(message); }
+
     private void open(File file, int attempt) {
         close(); resetZoom();
         status.setText("Cargando video..."); status.setVisible(true);
@@ -135,14 +139,17 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
     private void handleMediaError(File file, int attempt, long token, MediaException error) {
         if (token != generation) return;
         // Windows' native decoder can still be releasing the previous preview of this URI.
-        if (attempt == 0 && error != null && error.toString().contains("ERROR_MEDIA_INVALID")) {
+        if (attempt < 3 && error != null && error.toString().contains("ERROR_MEDIA_INVALID")) {
             close(); status.setText("Cargando video...");
             long retryToken = generation;
-            pendingOpen = new javafx.animation.PauseTransition(Duration.millis(300));
+            pendingOpen = new javafx.animation.PauseTransition(Duration.millis(400 * (attempt + 1)));
             pendingOpen.setOnFinished(e -> { if (retryToken == generation) open(file, attempt + 1); });
             pendingOpen.play();
-        } else fail("No se pudo abrir el video. Importalo para convertirlo a MP4 H.264."
-                + (error == null ? "" : "\n" + error.getMessage()));
+        } else {
+            close();
+            fail("No se pudo abrir el video. Comprueba que el archivo este disponible y use un formato compatible."
+                    + (error == null ? "" : "\n" + error.getMessage()));
+        }
     }
 
     private void fail(String text) { status.setText(text); status.setVisible(true); timeline.setDisable(true); playbackControls.setDisable(true); log.accept(text); }
@@ -167,8 +174,11 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
     @Override public void close() {
         generation++; priming = false;
         if (pendingOpen != null) { pendingOpen.stop(); pendingOpen = null; }
-        if (player != null) { player.stop(); player.dispose(); player = null; }
-        view.setMediaPlayer(null); timeline.setDisable(true); timeline.setValue(0); playbackControls.setDisable(true);
+        MediaPlayer previous = player; player = null;
+        view.setMediaPlayer(null);
+        // Disposing already stops playback; stop() can block a failing native decoder.
+        if (previous != null) previous.dispose();
+        timeline.setDisable(true); timeline.setValue(0); playbackControls.setDisable(true);
         status.setText("Selecciona un video"); status.setVisible(true); clock.setText("00:00:00.000");
     }
 

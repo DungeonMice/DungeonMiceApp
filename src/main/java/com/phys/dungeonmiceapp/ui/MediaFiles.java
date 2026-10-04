@@ -6,19 +6,28 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import com.google.gson.JsonParser;
+import java.util.function.Consumer;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /** FFmpeg file work only; callers persist repository changes on the JavaFX thread. */
 public final class MediaFiles {
     private MediaFiles() {}
+    private static final Map<Path, ReentrantLock> preparationLocks = new ConcurrentHashMap<>();
 
     public static Path storage() {
         return Paths.get(System.getProperty("dungeonmice.storage", ".")).toAbsolutePath().normalize();
     }
 
     public static File resolve(String path) {
-        Path file = Paths.get(java.text.Normalizer.normalize(path, java.text.Normalizer.Form.NFC));
+        Path file = Paths.get(path);
         Path resolved = (file.isAbsolute() ? file : storage().resolve(file)).normalize();
         if (Files.isRegularFile(resolved)) return resolved.toFile();
+        // Windows can store visually identical names with different Unicode sequences.
+        // Preserve the exact stored path; normalization is only a legacy fallback.
+        Path normalized = Paths.get(java.text.Normalizer.normalize(path, java.text.Normalizer.Form.NFC));
+        Path fallback = (normalized.isAbsolute() ? normalized : storage().resolve(normalized)).normalize();
+        if (!fallback.equals(resolved) && Files.isRegularFile(fallback)) return fallback.toFile();
         // Old databases may contain absolute paths from a different checkout/drive.
         String portable = path.replace('\\', '/');
         int videos = portable.toLowerCase(Locale.ROOT).indexOf("/videos/");
@@ -29,22 +38,73 @@ public final class MediaFiles {
         return resolved.toFile();
     }
 
-    public static File importVideo(File input, String userId, String groupId) throws Exception {
-        Path directory = storage().resolve("videos").resolve(safeId(userId)).resolve(safeId(groupId));
-        Files.createDirectories(directory);
-        Path output = directory.resolve(UUID.randomUUID() + ".mp4");
-        try {
-            if (isNative(input)) Files.copy(input.toPath(), output);
-            else convert(input, output, false);
-            return output.toFile();
-        } catch (Exception e) { Files.deleteIfExists(output); throw e; }
+    public static List<File> videosInDirectory(String directory) throws IOException {
+        if (directory == null || directory.trim().isEmpty()) return Collections.emptyList();
+        Path folder = Paths.get(directory.trim()).toAbsolutePath().normalize();
+        if (!Files.isDirectory(folder)) throw new IOException("El directorio no existe: " + directory);
+        List<File> videos = new ArrayList<>();
+        try (java.util.stream.Stream<Path> files = Files.list(folder)) {
+            files.filter(Files::isRegularFile).filter(path -> isVideoFile(path.toFile()))
+                    .sorted(Comparator.comparing(path -> path.getFileName().toString(), String.CASE_INSENSITIVE_ORDER))
+                    .forEach(path -> videos.add(path.toFile()));
+        }
+        return videos;
+    }
+
+    public static boolean isVideoFile(File file) {
+        String name = file.getName().toLowerCase(Locale.ROOT);
+        int dot = name.lastIndexOf('.');
+        return dot >= 0 && Arrays.asList(".mp4", ".m4v", ".mov", ".avi", ".mkv", ".wmv", ".webm", ".mpg", ".mpeg").contains(name.substring(dot));
+    }
+
+    public static List<File> references(Collection<File> sources) throws IOException {
+        Map<Path, File> unique = new LinkedHashMap<>();
+        for (File source : sources) {
+            File file = source.getCanonicalFile();
+            if (!file.isFile() || !isVideoFile(file)) throw new IOException("Video no disponible: " + source);
+            unique.putIfAbsent(file.toPath(), file);
+        }
+        return new ArrayList<>(unique.values());
+    }
+
+    public static File playable(File source) throws Exception {
+        return playable(source, text -> {});
+    }
+
+    public static File playable(File source, Consumer<String> progress) throws Exception {
+        return prepareMedia(source, false, progress);
     }
 
     public static File preview(File source) throws Exception {
-        if (isNative(source)) return source;
-        Path file = cache(source, "previews", ".mp4");
-        if (!Files.isRegularFile(file)) convert(source, file, true);
-        return file.toFile();
+        return preview(source, text -> {});
+    }
+
+    public static File preview(File source, Consumer<String> progress) throws Exception {
+        return prepareMedia(source, true, progress);
+    }
+
+    private static File prepareMedia(File source, boolean preview, Consumer<String> progress) throws Exception {
+        progress.accept("Comprobando video...");
+        boolean compatible = compatibleStreams(source);
+        String name = source.getName().toLowerCase(Locale.ROOT);
+        if (compatible && (name.endsWith(".mp4") || name.endsWith(".m4v"))) return source;
+        Path output = cache(source, preview ? "previews" : "playback", ".mp4");
+        ReentrantLock lock = preparationLocks.computeIfAbsent(output, path -> new ReentrantLock());
+        lock.lockInterruptibly();
+        try {
+            if (Files.isRegularFile(output) && Files.size(output) > 0) return output.toFile();
+            progress.accept(compatible ? "Adaptando contenedor, sin recodificar..." : "Convirtiendo video a formato compatible...");
+            Path temporary = Files.createTempFile(output.getParent(), output.getFileName().toString() + "-", ".mp4");
+            try {
+                if (compatible) remux(source, temporary, preview);
+                else convert(source, temporary, preview);
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+                if (Files.size(temporary) == 0) throw new IOException("El archivo preparado esta vacio.");
+                try { Files.move(temporary, output, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
+                catch (AtomicMoveNotSupportedException ex) { Files.move(temporary, output, StandardCopyOption.REPLACE_EXISTING); }
+                return output.toFile();
+            } finally { Files.deleteIfExists(temporary); }
+        } finally { lock.unlock(); }
     }
 
     public static File thumbnail(File source) throws Exception {
@@ -68,20 +128,14 @@ public final class MediaFiles {
         return destination.toString();
     }
 
-    private static String safeId(String id) {
-        if (id == null || !id.matches("[a-zA-Z0-9_-]+")) throw new IllegalArgumentException("Identificador de proyecto no valido.");
-        return id;
-    }
-
     private static Path cache(File input, String folder, String suffix) throws IOException {
         Path directory = storage().resolve("data").resolve(folder); Files.createDirectories(directory);
-        String key = input.getCanonicalPath() + ":" + input.lastModified() + ":" + input.length();
+        String key = "atomic-v2:" + input.getCanonicalPath() + ":" + input.lastModified() + ":" + input.length();
         return directory.resolve(UUID.nameUUIDFromBytes(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)) + suffix);
     }
 
-    private static boolean isNative(File input) throws Exception {
+    private static boolean compatibleStreams(File input) throws Exception {
         if (!input.isFile()) throw new IOException("Archivo no encontrado: " + input.getName());
-        if (!input.getName().toLowerCase(Locale.ROOT).endsWith(".mp4") && !input.getName().toLowerCase(Locale.ROOT).endsWith(".m4v")) return false;
         String probe;
         try {
             probe = run(Arrays.asList(System.getProperty("dungeonmice.ffprobe", "ffprobe"), "-v", "error", "-show_streams", "-of", "json", input.getAbsolutePath()), 20);
@@ -91,7 +145,10 @@ public final class MediaFiles {
             com.google.gson.JsonObject stream = element.getAsJsonObject();
             String type = stream.get("codec_type").getAsString();
             String codec = stream.has("codec_name") ? stream.get("codec_name").getAsString() : "";
-            if (type.equals("video")) { if (!codec.equals("h264")) return false; hasVideo = true; }
+            if (type.equals("video")) {
+                if (!codec.equals("h264") || !stream.has("pix_fmt") || !stream.get("pix_fmt").getAsString().equals("yuv420p")) return false;
+                hasVideo = true;
+            }
             if (type.equals("audio") && !codec.equals("aac") && !codec.equals("mp3")) return false;
         }
         return hasVideo;
@@ -100,10 +157,17 @@ public final class MediaFiles {
     private static void convert(File input, Path output, boolean preview) throws Exception {
         List<String> args = new ArrayList<>(Arrays.asList(ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", "-i", input.getAbsolutePath()));
         if (preview) args.addAll(Arrays.asList("-t", "15"));
-        args.addAll(Arrays.asList("-map", "0:v:0", "-map", "0:a:0?", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
+        args.addAll(Arrays.asList("-map", "0:v:0", "-map", "0:a:0?", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-threads", "2", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-movflags", "+faststart", output.toString()));
         try { run(args, preview ? 120 : 3600); }
         catch (Exception e) { Files.deleteIfExists(output); throw e; }
+    }
+
+    private static void remux(File input, Path output, boolean preview) throws Exception {
+        List<String> args = new ArrayList<>(Arrays.asList(ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", "-i", input.getAbsolutePath()));
+        if (preview) args.addAll(Arrays.asList("-t", "15"));
+        args.addAll(Arrays.asList("-map", "0:v:0", "-map", "0:a:0?", "-c", "copy", "-movflags", "+faststart", output.toString()));
+        run(args, 180);
     }
 
     private static String ffmpeg() { return System.getProperty("dungeonmice.ffmpeg", "ffmpeg"); }
@@ -114,13 +178,14 @@ public final class MediaFiles {
         try {
             process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile()).start();
             if (!process.waitFor(timeout, TimeUnit.SECONDS)) {
-                process.destroyForcibly(); throw new IOException("El procesamiento del video excedio el tiempo disponible.");
+                process.destroyForcibly(); process.waitFor(5, TimeUnit.SECONDS);
+                throw new IOException("El procesamiento del video excedio el tiempo disponible.");
             }
             String output = Files.readString(log);
             if (process.exitValue() != 0) throw new IOException("No se pudo procesar el video. " + output.substring(0, Math.min(500, output.length())));
             return output;
         } catch (InterruptedException e) {
-            if (process != null) process.destroyForcibly();
+            if (process != null) { process.destroyForcibly(); process.waitFor(5, TimeUnit.SECONDS); }
             Thread.currentThread().interrupt(); throw e;
         } finally { Files.deleteIfExists(log); }
     }
