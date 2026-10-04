@@ -1,0 +1,6 @@
+# Build and disposable test output
+/target/
+
+# Local database, user photos and legacy media are not source code
+/data/
+/videos/
