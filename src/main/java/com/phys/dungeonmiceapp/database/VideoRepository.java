@@ -100,6 +100,29 @@ public class VideoRepository {
         return video;
     }
 
+    public static int applyRegionsToGroup(String groupId, String sourceId, boolean replaceExisting) {
+        JsonObject source = ownedVideo(sourceId);
+        if (!groupId.equals(source.get("groupId").getAsString())) throw new IllegalArgumentException("Video de otro proyecto.");
+        List<VideoRegion> template = findRegions(sourceId);
+        if (template.isEmpty()) throw new IllegalArgumentException("Guarda primero las regiones del video.");
+        JsonArray data = new JsonArray(); for (VideoRegion region : template) data.add(region.toJson());
+        java.util.Map<JsonObject, com.google.gson.JsonElement> previous = new java.util.LinkedHashMap<>();
+        for (Video target : findByGroup(groupId)) {
+            if (target.getId().equals(sourceId)) continue;
+            JsonObject document = ownedVideo(target.getId());
+            if (!replaceExisting && document.has("regions") && document.getAsJsonArray("regions").size() > 0) continue;
+            previous.put(document, document.get("regions"));
+        }
+        // Validate ownership before mutating, then persist all independent copies together.
+        for (JsonObject document : previous.keySet()) document.add("regions", data.deepCopy());
+        if (!previous.isEmpty()) try { DatabaseManager.persist(); }
+        catch (RuntimeException error) {
+            previous.forEach((document, old) -> { if (old == null) document.remove("regions"); else document.add("regions", old); });
+            throw error;
+        }
+        return previous.size();
+    }
+
     // DELETE
     public static void deleteById(String id) {
         JsonObject filter = new JsonObject();

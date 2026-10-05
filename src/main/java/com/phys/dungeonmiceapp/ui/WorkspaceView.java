@@ -4,6 +4,7 @@ import com.phys.dungeonmiceapp.database.*;
 import com.phys.dungeonmiceapp.model.*;
 import com.phys.dungeonmiceapp.session.SessionManager;
 import com.phys.dungeonmiceapp.api.PythonVideoClient;
+import com.phys.dungeonmiceapp.api.VideoBatch;
 import com.google.gson.JsonArray;
 import java.io.File;
 import java.io.IOException;
@@ -62,7 +63,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private boolean maximized;
     private Rectangle2D restoreBounds;
     private boolean closed;
-    private Task<java.nio.file.Path> apiTask;
+    private Task<?> apiTask;
+    private final javafx.beans.property.BooleanProperty processingBusy = new javafx.beans.property.SimpleBooleanProperty(false);
     private final TextField pythonAddress = new TextField(System.getProperty("dungeonmice.python.url", "http://127.0.0.1:8765"));
     private final javafx.beans.property.BooleanProperty pythonAvailable = new javafx.beans.property.SimpleBooleanProperty(true);
     private final javafx.beans.property.StringProperty pythonStatus = new javafx.beans.property.SimpleStringProperty("");
@@ -473,6 +475,22 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         javafx.collections.ObservableList<ActivityLog.Entry> history = javafx.collections.FXCollections.observableArrayList();
         PlaybackPane player = newPlayer(false, text -> logVideo(selectedVideo, PlaybackPane.format(playerTime()), text, text.startsWith("No ") || text.startsWith("Error")));
         RegionEditor regions = new RegionEditor(player);
+        regions.setOnApplyAll(() -> {
+            try {
+                regions.requestRegions();
+                Dialog<Boolean> dialog = new Dialog<>(); dialog.initOwner(stage); dialog.setTitle("Aplicar regiones al proyecto");
+                CheckBox replace = new CheckBox("Reemplazar tambien las regiones existentes"); replace.setId("region-replace-existing");
+                Label warning = new Label("Se copiaran las regiones guardadas del video actual. Las coordenadas requieren la misma resolucion y encuadre."); warning.setWrapText(true); warning.setMaxWidth(360);
+                dialog.getDialogPane().setContent(new VBox(12, warning, replace));
+                dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+                dialog.setResultConverter(type -> type == ButtonType.OK ? replace.isSelected() : null);
+                dialog.showAndWait().ifPresent(overwrite -> {
+                    int count = VideoRepository.applyRegionsToGroup(selectedProject.getId(), selectedVideo.getId(), overwrite);
+                    logVideo(selectedVideo, PlaybackPane.format(playerTime()), "Regiones aplicadas a " + count + " videos", false);
+                    Alert notice = new Alert(Alert.AlertType.INFORMATION, "Regiones aplicadas a " + count + " videos. Cada video conserva una copia editable."); notice.initOwner(stage); notice.setHeaderText(null); notice.showAndWait();
+                });
+            } catch (RuntimeException ex) { error(ex); }
+        });
         ComboBox<Video> choices = new ComboBox<>(); choices.setId("video-choice"); choices.setPrefWidth(300); choices.getItems().setAll(videos);
         choices.setConverter(new javafx.util.StringConverter<Video>() {
             @Override public String toString(Video value) { return value == null ? "Seleccionar video" : value.getTitle(); }
@@ -494,7 +512,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 VideoRepository.deleteById(selectedVideo.getId()); selectedVideo = null; show("video");
             }
         });
-        remove.disableProperty().bind(choices.valueProperty().isNull());
+        remove.disableProperty().bind(choices.valueProperty().isNull().or(processingBusy));
+        load.disableProperty().bind(processingBusy);
         choices.setMinWidth(120); choices.setMaxWidth(300); choices.setPrefWidth(250);
         load.setMinWidth(0); load.setPrefWidth(145); remove.setMinWidth(0); remove.setPrefWidth(145);
         HBox tools = new HBox(10, choices, load, remove, iconButton("zoom", "Acercar", () -> player.setZoom(2)), iconButton("reset", "Restablecer zoom", player::resetZoom));
@@ -581,28 +600,89 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                     if (apiTask != task || closed) return;
                     apiTask = null; busy.set(false); status.textProperty().unbind(); status.setText("Error de conexion o procesamiento"); status.getStyleClass().add("validation-message"); refreshResult.run(); logVideo(video, PlaybackPane.format(playerTime()), task.getException().getMessage(), true); error(task.getException());
                 });
-                task.setOnCancelled(e -> { busy.set(false); status.textProperty().unbind(); status.setText("Cancelado"); refreshResult.run(); logVideo(video, PlaybackPane.format(playerTime()), "Analisis cancelado", false); });
+                task.setOnCancelled(e -> { if (apiTask != null && apiTask != task) return; busy.set(false); status.textProperty().unbind(); status.setText("Cancelado"); refreshResult.run(); logVideo(video, PlaybackPane.format(playerTime()), "Analisis cancelado", false); });
                 files.submit(task);
             } catch (RuntimeException | IOException ex) { error(ex); }
         });
         process.setId("python-process"); process.disableProperty().bind(choices.valueProperty().isNull().or(busy).or(pythonAvailable.not()));
+        Button processAll = button("Procesar todos", "outline", () -> {
+            if (apiTask != null) return;
+            try {
+                regions.requestRegions();
+                List<Video> originals = VideoRepository.findByGroup(paneProject);
+                Map<String, JsonArray> snapshots = new HashMap<>();
+                for (Video original : originals) {
+                    JsonArray payload = new JsonArray(); for (VideoRegion region : VideoRepository.findRegions(original.getId())) payload.add(region.toJson());
+                    if (payload.size() < 2) throw new IllegalArgumentException(original.getTitle() + ": guarda al menos dos regiones. Puedes usar Aplicar a todos.");
+                    snapshots.put(original.getId(), payload);
+                }
+                DirectoryChooser chooser = new DirectoryChooser(); chooser.setTitle("Carpeta para los videos procesados");
+                File folder = chooser.showDialog(stage); if (folder == null) return;
+                List<VideoBatch.Item> plan = VideoBatch.plan(originals, snapshots, folder.toPath(), MediaFiles.storage());
+                PythonVideoClient client = new PythonVideoClient(java.net.URI.create(pythonAddress.getText().trim()));
+                String ownerId = SessionManager.getCurrentUser().getId();
+                Task<Integer> task = new Task<Integer>() {
+                    @Override protected Integer call() throws Exception {
+                        return VideoBatch.run(plan,
+                            (item, report) -> client.process(item.getSource(), item.getDestination(), item.getVideo().getId(), paneProject, item.getRegions(), report),
+                            (item, result) -> {
+                                // Database and observable log mutations stay on the JavaFX thread.
+                                FutureTask<Void> record = new FutureTask<>(() -> {
+                                    if (closed || !SessionManager.isLoggedIn() || !ownerId.equals(SessionManager.getCurrentUser().getId())) throw new IOException("Sesion cerrada. Resultado disponible en " + result);
+                                    ProcessedVideo stored = ProcessedVideoRepository.record(paneProject, item.getVideo().getId(), result.toFile(), item.getRegions());
+                                    selectedProcessedId = stored.getId(); logVideo(item.getVideo(), "00:00:00.000", "Resultado listo: " + result, false); return null;
+                                }); Platform.runLater(record); record.get();
+                            },
+                            (item, failure) -> Platform.runLater(() -> {
+                                if (!closed) logVideo(item.getVideo(), "00:00:00.000", "No se pudo completar: " + Objects.toString(failure.getMessage(), "Error") + ". Destino: " + item.getDestination(), true);
+                            }), this::updateMessage);
+                    }
+                };
+                apiTask = task; busy.set(true); view.setDisable(true); progress.setProgress(-1);
+                status.getStyleClass().remove("validation-message"); status.textProperty().bind(task.messageProperty());
+                task.messageProperty().addListener((obs, old, value) -> {
+                    if (apiTask != task || closed) return;
+                    java.util.regex.Matcher count = java.util.regex.Pattern.compile("^(\\d+)/(\\d+) videos").matcher(value);
+                    java.util.regex.Matcher frames = java.util.regex.Pattern.compile("(\\d+)/(\\d+) frames").matcher(value);
+                    if (count.find()) {
+                        double fraction = frames.find() && Double.parseDouble(frames.group(2)) > 0 ? Math.min(.98, Double.parseDouble(frames.group(1)) / Double.parseDouble(frames.group(2))) : 0;
+                        progress.setProgress((Double.parseDouble(count.group(1)) - 1 + fraction) / plan.size());
+                        int index = Integer.parseInt(count.group(1)) - 1;
+                        if (index >= 0 && index < plan.size()) logVideo(plan.get(index).getVideo(), "00:00:00.000", value, false);
+                    }
+                });
+                task.setOnSucceeded(event -> {
+                    if (apiTask != task || closed) return;
+                    apiTask = null; busy.set(false); status.textProperty().unbind(); refreshResult.run();
+                    status.setText("Lote terminado: " + task.getValue() + "/" + plan.size() + " completados, " + (plan.size() - task.getValue()) + " fallidos. Resultados en Procesados.");
+                });
+                task.setOnFailed(event -> {
+                    if (apiTask != task || closed) return;
+                    apiTask = null; busy.set(false); status.textProperty().unbind(); refreshResult.run(); status.setText("Lote interrumpido: " + task.getException().getMessage());
+                });
+                task.setOnCancelled(event -> { if (apiTask != null && apiTask != task) return; busy.set(false); status.textProperty().unbind(); refreshResult.run(); status.setText("Lote cancelado. Los resultados completados se conservan en Procesados."); });
+                files.submit(task);
+            } catch (IOException | RuntimeException ex) { error(ex); }
+        });
+        processAll.setId("python-process-all"); processAll.disableProperty().bind(process.disableProperty());
         pythonAddress.disableProperty().bind(busy);
         choices.disableProperty().bind(busy);
-        busy.addListener((obs, old, value) -> regions.setLocked(value));
+        busy.addListener((obs, old, value) -> { processingBusy.set(value); regions.setLocked(value); });
         Button cancel = button("Cancelar", "outline", this::cancelApi); cancel.disableProperty().bind(busy.not());
         view.setId("python-result");
-        for (Button button : new Button[]{process, cancel, view}) { button.setMinWidth(0); button.setMaxWidth(Double.MAX_VALUE); }
+        for (Button button : new Button[]{process, processAll, cancel, view}) { button.setMinWidth(0); button.setMaxWidth(Double.MAX_VALUE); }
         cancel.visibleProperty().bind(busy); cancel.managedProperty().bind(busy);
         view.visibleProperty().bind(busy.not()); view.managedProperty().bind(busy.not());
         TitledPane advanced = new TitledPane("Conexion", pythonAddress); advanced.setExpanded(false); advanced.getStyleClass().add("connection-settings");
-        panel.getChildren().addAll(connection, progress, status, process, cancel, view, advanced); return panel;
+        HBox actions = new HBox(6, process, processAll); HBox.setHgrow(process, Priority.ALWAYS); HBox.setHgrow(processAll, Priority.ALWAYS);
+        panel.getChildren().addAll(connection, progress, status, actions, cancel, view, advanced); return panel;
     }
 
     public void pythonConnecting() { pythonAvailable.set(false); pythonStatus.set("Conectando..."); pythonAddress.setEditable(false); }
     public void pythonConnected(String url) { if (closed) return; pythonAddress.setText(url); pythonAvailable.set(true); pythonStatus.set("Conectado"); }
     public void pythonUnavailable(String message) { if (closed) return; pythonAvailable.set(false); pythonStatus.set("Python no disponible"); pythonAddress.setTooltip(new Tooltip(message)); System.err.println("[Python] " + message); }
 
-    private void cancelApi() { if (apiTask != null) { apiTask.cancel(true); apiTask = null; } }
+    private void cancelApi() { if (apiTask != null) { apiTask.cancel(true); apiTask = null; } processingBusy.set(false); }
 
     private PlaybackPane newPlayer(boolean compact, Consumer<String> log) { PlaybackPane player = new PlaybackPane(compact, log); players.add(player); return player; }
     private VBox sidePanel(String title) { VBox box = new VBox(10, heading(title, false)); box.getStyleClass().add("side-panel"); box.setPadding(new Insets(10)); return box; }

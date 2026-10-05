@@ -126,7 +126,29 @@ example server on the same port.
   integer FPS calculation and handling of `end_time`. It does not repair or alter
   scientific logic during integration.
 
-## New connection files
+## Project-wide regions and batch processing
+
+In Video > Regiones, **Aplicar a todos** copies the saved polygons of the current
+video into the other videos in the selected project. By default existing regions
+are kept, preserving individual exceptions. Selecting **Reemplazar tambien las
+regiones existentes** explicitly replaces them. Copies are independent and can
+be edited or removed per video afterwards. All region changes persist together.
+Coordinates remain in original pixels: templates require the same resolution
+and framing. The Python adapter rejects incompatible dimensions; it never
+silently scales polygons or analyzes with mismatched coordinates.
+
+**Procesar todos** takes a snapshot of every video's own saved regions (at least
+two per video) and asks once for an external output directory. Videos are sent
+sequentially to the same Python API. Existing results are not overwritten;
+duplicate basenames receive numeric suffixes. Each completed result is immediately
+indexed in **Procesados**, including the regions used for that run. Failure of
+one video is logged against that video and the remaining videos continue. Cancel
+or navigation stops the current analysis and does not start further videos;
+already completed results remain available. No original videos are moved or
+copied into either repository. `scripts/check-api.ps1` includes batch transport,
+failure, cancellation, ownership and independent-region persistence checks.
+
+## Connection files
 
 `scripts/dungeonmice_api_bridge.py` is the real processing adapter.
 `scripts/start-dungeonmice-api.ps1` starts it with the selected environment/preset.

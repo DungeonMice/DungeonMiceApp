@@ -8,6 +8,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Runtime dependencies failed' }
     & $JavaPath --add-modules jdk.httpserver -cp 'target/classes;target/test-classes;target/runtime-libs/*' com.phys.dungeonmiceapp.PythonApiChecks
     if ($LASTEXITCODE -ne 0) { throw 'API checks failed' }
+    & $JavaPath --add-modules jdk.httpserver -cp 'target/classes;target/test-classes;target/runtime-libs/*' com.phys.dungeonmiceapp.VideoBatchChecks
+    if ($LASTEXITCODE -ne 0) { throw 'Batch checks failed' }
     if ($PythonUrl) {
         if (-not $VideoPath) { throw 'Provide -VideoPath for the Python integration check' }
         & $JavaPath --add-modules jdk.httpserver -cp 'target/classes;target/test-classes;target/runtime-libs/*' com.phys.dungeonmiceapp.PythonApiChecks $PythonUrl $VideoPath

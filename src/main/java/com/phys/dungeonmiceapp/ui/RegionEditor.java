@@ -132,6 +132,13 @@ public final class RegionEditor extends VBox {
 
     public void cancel() { editing.set(false); replacing = null; draft.clear(); player.setRegionClickHandler(null); message.setText(""); overlay(); }
     public void setLocked(boolean value) { locked.set(value); if (value) cancel(); }
+    public void setOnApplyAll(Runnable action) {
+        Button apply = button("Aplicar a todos", "region-apply-all", action);
+        apply.setMaxWidth(Double.MAX_VALUE);
+        apply.disableProperty().bind(editing.or(locked).or(player.videoReadyProperty().not()).or(javafx.beans.binding.Bindings.isEmpty(regions)));
+        apply.visibleProperty().bind(editing.not()); apply.managedProperty().bind(editing.not());
+        getChildren().add(4, apply);
+    }
     public JsonArray requestRegions() {
         if (editing.get()) throw new IllegalArgumentException("Guarda o cancela la region en edicion.");
         if (regions.size() < 2) throw new IllegalArgumentException("CrossMaze requiere al menos dos regiones guardadas.");
