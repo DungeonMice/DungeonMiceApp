@@ -73,3 +73,18 @@
 .thumbnail { -fx-background-color: #dedede; -fx-background-radius: 8; }
 .slider .track { -fx-background-color: #b9b9b9; -fx-background-radius: 8; -fx-pref-height: 6; }
 .slider .thumb { -fx-background-color: #333333; -fx-padding: 6; }
+.muted { -fx-text-fill: #686868; -fx-font-size: 12px; }
+.result-title { -fx-font-weight: 600; }
+.inspector-tabs { -fx-background-color: #f6f6f6; }
+.inspector-tabs > .tab-header-area { -fx-padding: 0; }
+.inspector-tabs > .tab-header-area > .tab-header-background { -fx-background-color: #eeeeee; }
+.inspector-tabs .tab { -fx-pref-width: 135; -fx-pref-height: 38; -fx-background-radius: 0; -fx-padding: 8 10; -fx-background-color: #eeeeee; }
+.inspector-tabs .tab:selected { -fx-background-color: #f6f6f6; -fx-border-color: transparent transparent #202020 transparent; -fx-border-width: 0 0 2 0; }
+.inspector-tabs .tab-label { -fx-text-fill: #202020; -fx-font-size: 13px; }
+.plain-scroll, .plain-scroll > .viewport { -fx-background-color: #f6f6f6; -fx-background: #f6f6f6; -fx-padding: 0; }
+.activity-list { -fx-background-color: transparent; -fx-border-color: #d6d6d6; }
+.connection-settings > .title { -fx-background-color: transparent; -fx-padding: 4 0; -fx-font-size: 12px; }
+.connection-settings > .content { -fx-background-color: transparent; -fx-border-width: 0; -fx-padding: 4 0 0 0; }
+.progress-bar > .bar { -fx-background-color: #414141; -fx-background-insets: 0; -fx-background-radius: 4; }
+.progress-bar > .track { -fx-background-color: #dedede; -fx-background-radius: 4; }
+.progress-indicator { -fx-progress-color: #b9b9b9; }

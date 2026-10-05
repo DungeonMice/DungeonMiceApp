@@ -29,46 +29,58 @@ public final class RegionEditor extends VBox {
 
     public RegionEditor(PlaybackPane player) {
         this.player = player;
-        setId("region-editor"); setSpacing(10); setPadding(new Insets(10)); getStyleClass().add("side-panel");
+        setId("region-editor"); setSpacing(10); setPadding(new Insets(12));
         Label title = new Label("Regiones"); title.getStyleClass().add("section-heading");
+        Label countSaved = new Label(); countSaved.textProperty().bind(javafx.beans.binding.Bindings.size(regions).asString("%d guardadas")); countSaved.getStyleClass().add("muted");
+        Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS); HBox header = new HBox(8, title, spacer, countSaved); header.setAlignment(Pos.CENTER_LEFT);
         list.setId("region-list"); list.setMinHeight(90); list.setPrefHeight(130); list.setPlaceholder(new Label("Sin regiones"));
         list.setCellFactory(view -> new ListCell<VideoRegion>() {
             @Override protected void updateItem(VideoRegion item, boolean empty) {
                 super.updateItem(item, empty); setText(null); setGraphic(null);
                 if (!empty && item != null) {
-                    Label label = new Label(item.getName()); label.setWrapText(true); label.setMaxWidth(130);
+                    Label label = new Label(item.getName()); label.setWrapText(true); label.setMaxWidth(200);
                     label.textFillProperty().bind(javafx.beans.binding.Bindings.when(selectedProperty()).then(Color.WHITE).otherwise(Color.web("#202020")));
-                    HBox row = new HBox(8, new Circle(5, Color.web(item.getColor())), label); row.setAlignment(Pos.CENTER_LEFT); setGraphic(row);
+                    Label vertices = new Label(item.getPoints().size() + " vertices"); vertices.getStyleClass().add("muted");
+                    vertices.textFillProperty().bind(javafx.beans.binding.Bindings.when(selectedProperty()).then(Color.web("#dddddd")).otherwise(Color.web("#686868")));
+                    HBox row = new HBox(8, new Circle(5, Color.web(item.getColor())), new VBox(2, label, vertices)); row.setAlignment(Pos.CENTER_LEFT); setGraphic(row);
                 }
             }
         });
         list.getSelectionModel().selectedItemProperty().addListener((obs, old, value) -> overlay());
         name.setId("region-name"); name.setPromptText("Nombre"); name.setMaxWidth(Double.MAX_VALUE);
-        color.setId("region-color"); color.setMaxWidth(Double.MAX_VALUE);
+        color.setId("region-color"); color.setMinWidth(70); color.setPrefWidth(90); color.setMaxWidth(90);
         threshold.setId("region-overlap"); threshold.setBlockIncrement(5);
         Label overlap = new Label(); overlap.textProperty().bind(threshold.valueProperty().asString("Solapamiento: %.0f%%"));
-        Button add = button("Agregar region", "region-add", () -> begin(null));
+        Button add = button("Agregar", "region-add", () -> begin(null)); add.setTooltip(new Tooltip("Agregar region"));
         add.disableProperty().bind(player.videoReadyProperty().not().or(editing).or(locked).or(javafx.beans.binding.Bindings.size(regions).greaterThanOrEqualTo(32)));
         Button edit = button("Editar", "region-edit", () -> begin(list.getSelectionModel().getSelectedItem()));
         edit.disableProperty().bind(list.getSelectionModel().selectedItemProperty().isNull().or(editing).or(locked).or(player.videoReadyProperty().not()));
         Button delete = button("Eliminar", "region-delete", this::remove);
         delete.disableProperty().bind(list.getSelectionModel().selectedItemProperty().isNull().or(editing).or(locked));
-        HBox tools = new HBox(8, edit, delete);
-        for (Button b : new Button[]{add, edit, delete}) b.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(edit, Priority.ALWAYS); HBox.setHgrow(delete, Priority.ALWAYS);
+        HBox tools = new HBox(6, add, edit, delete);
+        for (Button b : new Button[]{add, edit, delete}) { b.setMinWidth(0); b.setMaxWidth(Double.MAX_VALUE); }
+        HBox.setHgrow(add, Priority.ALWAYS); HBox.setHgrow(edit, Priority.ALWAYS); HBox.setHgrow(delete, Priority.ALWAYS);
         Button undo = symbol("\u21b6", "region-undo", "Deshacer vertice", () -> { if (!draft.isEmpty()) draft.remove(draft.size() - 1); });
         undo.disableProperty().bind(javafx.beans.binding.Bindings.isEmpty(draft));
         Button redraw = symbol("\u21bb", "region-redraw", "Redibujar region", draft::clear);
         Label count = new Label(); count.textProperty().bind(javafx.beans.binding.Bindings.size(draft).asString("Vertices: %d"));
         HBox drawingTools = new HBox(8, undo, redraw, count); drawingTools.setAlignment(Pos.CENTER_LEFT);
-        Button save = button("Guardar region", "region-save", this::save);
+        Button save = button("Guardar", "region-save", this::save);
         save.disableProperty().bind(javafx.beans.binding.Bindings.size(draft).lessThan(3).or(player.videoReadyProperty().not()).or(locked));
         Button cancel = button("Cancelar", "region-cancel", this::cancel);
-        save.setMaxWidth(Double.MAX_VALUE); cancel.setMaxWidth(Double.MAX_VALUE);
-        form.getChildren().addAll(name, color, overlap, threshold, drawingTools, save, cancel);
+        save.setMinWidth(0); cancel.setMinWidth(0); save.setMaxWidth(Double.MAX_VALUE); cancel.setMaxWidth(Double.MAX_VALUE);
+        HBox identity = new HBox(8, name, color); name.setMinWidth(0); HBox.setHgrow(name, Priority.ALWAYS);
+        HBox actions = new HBox(8, save, cancel); HBox.setHgrow(save, Priority.ALWAYS); HBox.setHgrow(cancel, Priority.ALWAYS);
+        form.getChildren().addAll(identity, overlap, threshold, drawingTools, actions);
         form.visibleProperty().bind(editing); form.managedProperty().bind(editing);
+        add.visibleProperty().bind(editing.not()); add.managedProperty().bind(editing.not());
+        tools.visibleProperty().bind(editing.not()); tools.managedProperty().bind(editing.not());
+        list.disableProperty().bind(editing.or(locked));
+        list.visibleProperty().bind(editing.not()); list.managedProperty().bind(editing.not());
         message.setWrapText(true); message.setMaxWidth(Double.MAX_VALUE); message.getStyleClass().add("validation-message"); message.setId("region-message");
-        getChildren().addAll(title, list, add, tools, form, message);
+        Label frame = new Label(); frame.setId("region-frame-status"); frame.getStyleClass().add("muted");
+        player.videoReadyProperty().addListener((obs, old, ready) -> frame.setText(ready ? player.getPlayer().getMedia().getWidth() + " x " + player.getPlayer().getMedia().getHeight() + " px" : "Cargando video..."));
+        getChildren().addAll(header, frame, tools, list, form, message);
         draft.addListener((ListChangeListener<Point2D>) change -> overlay());
         player.videoReadyProperty().addListener((obs, old, ready) -> { if (ready) overlay(); });
     }

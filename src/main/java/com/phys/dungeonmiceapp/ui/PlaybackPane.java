@@ -26,6 +26,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
     private String highlighted;
     private final javafx.beans.property.BooleanProperty videoReady = new javafx.beans.property.SimpleBooleanProperty(false);
     private final Label status = new Label("Selecciona un video");
+    private final ProgressIndicator loading = new ProgressIndicator();
     private final Label clock = new Label("00:00:00.000");
     private final Slider timeline = new Slider();
     private final Slider volume = new Slider(0, 1, .5);
@@ -43,7 +44,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         this.log = log;
         view.setManaged(false); view.setPreserveRatio(true);
         viewport = new Region() {
-            { getChildren().addAll(view, regions, status); status.setManaged(false); regions.setManaged(false); regions.setMouseTransparent(true); }
+            { getChildren().addAll(view, regions, loading, status); status.setManaged(false); loading.setManaged(false); regions.setManaged(false); regions.setMouseTransparent(true); }
             @Override protected void layoutChildren() {
                 double width = Math.max(0, getWidth() - 2), height = Math.max(0, getHeight() - 2);
                 double aspect = player != null && player.getMedia().getHeight() > 0
@@ -53,6 +54,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
                 view.relocate((getWidth() - fitWidth) / 2, (getHeight() - fitHeight) / 2);
                 regions.setWidth(getWidth()); regions.setHeight(getHeight()); drawRegions();
                 status.autosize(); status.relocate((getWidth() - status.getWidth()) / 2, (getHeight() - status.getHeight()) / 2);
+                loading.resizeRelocate((getWidth() - 32) / 2, getHeight() / 2 - 50, 32, 32);
             }
         };
         viewport.setId("playback-viewport");
@@ -62,6 +64,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         clip.setArcWidth(16); clip.setArcHeight(16); viewport.setClip(clip);
         status.getStyleClass().add("playback-status"); status.setWrapText(true); status.setMaxWidth(400);
         status.setId("playback-status");
+        loading.setId("video-loading"); loading.setVisible(false); loading.setMouseTransparent(true);
         timeline.setMax(1); timeline.setDisable(true); timeline.setId("playback-seek");
         timeline.valueProperty().addListener((obs, old, value) -> {
             if (!updating && player != null && timeline.isValueChanging()) player.seek(Duration.seconds(value.doubleValue()));
@@ -113,13 +116,14 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         openDirect(file);
     }
 
-    public void prepare() { close(); status.setText("Preparando video..."); }
+    public void prepare() { close(); loading.setVisible(true); status.setText("Preparando video..."); }
     public void preparationMessage(String message) { if (player == null) status.setText(message); }
     public void showError(String message) { close(); fail(message); }
 
     private void openDirect(File file) {
         close(); resetZoom();
         status.setText("Cargando video..."); status.setVisible(true);
+        loading.setVisible(true);
         if (!file.isFile()) { fail("No se encontro el archivo: " + file.getName()); return; }
         final long token = ++generation;
         try {
@@ -133,6 +137,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
             loaded.setOnReady(() -> {
                 if (token != generation) return;
                 videoReady.set(true);
+                loading.setVisible(false);
                 status.setVisible(false); timeline.setDisable(false); playbackControls.setDisable(false);
                 timeline.setMax(Math.max(.001, loaded.getTotalDuration().toSeconds()));
                 loaded.seek(Duration.ZERO); viewport.requestLayout();
@@ -156,7 +161,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         } catch (RuntimeException e) { close(); fail(e.getMessage()); }
     }
 
-    private void fail(String text) { status.setText(text); status.setVisible(true); timeline.setDisable(true); playbackControls.setDisable(true); log.accept(text); }
+    private void fail(String text) { loading.setVisible(false); status.setText(text); status.setVisible(true); timeline.setDisable(true); playbackControls.setDisable(true); log.accept(text); }
     public void play() { if (player != null) { if (priming) player.setMute(false); priming = false; player.play(); log.accept("Reproduciendo"); } }
     public void pause() { if (player != null) { if (priming) player.setMute(false); priming = false; player.pause(); log.accept("Pausado"); } }
     public void seek(double seconds) {
@@ -220,6 +225,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         if (pendingOpen != null) { pendingOpen.stop(); pendingOpen = null; }
         DirectPlayer previous = player; player = null;
         videoReady.set(false); view.setImage(null); view.setViewport(null); drawRegions();
+        loading.setVisible(false);
         if (previous != null) previous.dispose();
         timeline.setDisable(true); timeline.setValue(0); playbackControls.setDisable(true);
         status.setText("Selecciona un video"); status.setVisible(true); clock.setText("00:00:00.000");

@@ -25,6 +25,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Functional checks failed.' }
     & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.RegionEditorChecks target/fixtures/test.mp4
     if ($LASTEXITCODE -ne 0) { throw 'Region editor checks failed.' }
+    & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.ProcessedVideoChecks target/fixtures/test.mp4
+    if ($LASTEXITCODE -ne 0) { throw 'Processed library checks failed.' }
     & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.WindowControlsChecks
     if ($LASTEXITCODE -ne 0) { throw 'Window controls checks failed.' }
     & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.WindowControlsChecks --native-close

@@ -18,9 +18,12 @@ overwritten. The real processor returns an MP4 result.
 For transport-only experiments, `python scripts/python_api_example.py` returns
 the video unchanged. Select this external server explicitly with Java's VM option
 `-Ddungeonmice.python.url=http://127.0.0.1:8765`; automatic startup is then skipped.
-The returned file opens in the existing player and
-can be reopened with **Ver resultado**. It is NOT automatically added to a project
-or the database. The video selection continues to refer to the original file.
+The returned file is indexed in the existing encrypted database's
+`processedVideos` collection and opens in **Procesados**. Only its external path,
+source/project references, registration time and analysis region snapshot are
+stored; the video is never copied into the project. **Ver resultado** resolves
+the newest indexed result for the selected original, including after navigation
+or an application restart. Original video associations remain unchanged.
 
 ## Contract
 
@@ -84,6 +87,17 @@ the current UI requires saved polygons rather than silently using that fallback.
 - Original videos are not copied, converted, edited or loaded entirely into heap.
 - A `.part` result is streamed into the user-selected external directory and moved
   to the final filename ONLY after a successful, nonempty video response.
+- The **Procesados** library is scoped to the current user's selected project.
+  Search filters results without changing files. **Quitar del historial** removes
+  only the database reference. Project deletion also drops result references,
+  never the external output files. Missing/moved results remain indexed with a
+  clear playback error, rather than silently disappearing.
+- **Vincular resultado** indexes an existing external result (for example one
+  generated before this library existed), associated with an operator-selected
+  original video. It never uploads, copies or verifies that an old video contains
+  Python annotations. Its region snapshot comes from the original's current
+  saved regions and its timestamp is the time of linking, not a recovered
+  historical processing time.
 - Python's demo uses an OS temporary directory and deletes it after each request.
   This temporary upload is necessary for this whole-video transport, not a Java
   project cache. The real processor owns its own storage policy.

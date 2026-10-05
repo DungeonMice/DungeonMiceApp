@@ -67,7 +67,7 @@ example server on the same port.
 ## Behavior
 
 - The Java Regions panel now supports adding, drawing, naming, recoloring,
-  redrawing, editing and deleting polygons. Select **Agregar region**, click the
+  redrawing, editing and deleting polygons. Select **Agregar**, click the
   vertices on the paused video and choose **Guardar region**. At least three
   vertices form a polygon; the undo control removes the last vertex. Save or
   cancel the current draft before processing.
@@ -87,6 +87,16 @@ example server on the same port.
   generation phase. A full result is returned after analysis, not progressively
   displayed frames. Python validates custom regions before accepting the video
   upload and reports validation errors to Java instead of hiding the reason.
+- The inspector separates **Regiones** and **Registros** into tabs, while the
+  processing controls remain visible below. Video opening has an explicit loading
+  indicator. Session logs are searchable, bounded to 200 entries per original,
+  include timecodes, and survive navigation within the workspace. They are not
+  scientific reports and are not persisted after closing the application.
+- Completed videos open in **Procesados** and remain accessible after switching
+  tabs or restarting Java. The encrypted database stores external result paths
+  and the original analysis region snapshot, not video data. **Ver resultado**
+  retrieves the selected original's latest indexed output. Existing older outputs
+  can be linked manually with **Vincular resultado** without creating copies.
 - The HTTP contract is unchanged: POST metadata, PUT original video, receive result.
 - Empty regions from legacy manual clients use the operator-selected preset
   (CrossMaze_control_s1.json by default); the new UI sends saved regions instead.
@@ -126,7 +136,9 @@ The existing `scripts/python_api_example.py` supplies the HTTP transport only.
 against a disposable database. Its optional `-TestVideo` verifies shutdown
 during real analysis without retaining the result.
 `scripts/check-functional.ps1` includes drawing/editing, coordinate mapping and
-database reload checks. `scripts/check-dungeonmice-bridge.ps1 -CustomRegions`
+database reload checks, plus processed-library navigation, owner isolation,
+missing-file handling, log filtering and compact/large UI screenshots.
+`scripts/check-dungeonmice-bridge.ps1 -CustomRegions`
 tests the real Python engine with regions created through Java controls on a
 CrossMaze clip, checks the returned region identifiers, and removes all test
 videos and results afterwards.

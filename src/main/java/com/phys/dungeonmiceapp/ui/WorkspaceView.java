@@ -53,6 +53,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private final Label loginMessage = new Label();
     private VideoGroup selectedProject;
     private Video selectedVideo;
+    private String selectedProcessedId;
+    private final Map<String, javafx.collections.ObservableList<ActivityLog.Entry>> activity = new HashMap<>();
     private File pendingPhoto;
     private Image profileImage;
     private String screen = "login";
@@ -104,7 +106,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         }
         windowTitle.setText("Dungeon Mice" + (suffix.isEmpty() ? "" : " - " + suffix)); stage.setTitle(windowTitle.getText());
         VBox header = new VBox(titleBar());
-        if (Arrays.asList("projects", "video", "data", "user").contains(next)) header.getChildren().add(navigation(next));
+        if (Arrays.asList("projects", "video", "processed", "data", "user").contains(next)) header.getChildren().add(navigation(next));
         setTop(header);
         switch (next) {
             case "register": setCenter(userForm(false)); break;
@@ -113,6 +115,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             case "create-project": setCenter(projectForm(false)); break;
             case "edit-project": setCenter(projectForm(true)); break;
             case "video": setCenter(video()); break;
+            case "processed": setCenter(processed()); break;
             case "data": setCenter(data()); break;
             default: setCenter(login());
         }
@@ -176,10 +179,11 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
 
     private HBox navigation(String selected) {
         HBox tabs = new HBox(); tabs.getStyleClass().add("navigation");
-        String[] names = {"Proyectos", "Video", "Datos", "Usuario"}, targets = {"projects", "video", "data", "user"};
+        String[] names = {"Proyectos", "Video", "Procesados", "Datos", "Usuario"}, targets = {"projects", "video", "processed", "data", "user"};
         for (int i = 0; i < names.length; i++) {
             final String target = targets[i];
             Button tab = button(names[i], "tab", () -> { if (target.equals("user")) beginProfile(true); else show(target); });
+            tab.setId("nav-" + target); tab.setMinWidth(0);
             if (target.equals(selected)) tab.getStyleClass().add("selected");
             tab.setMaxWidth(Double.MAX_VALUE); HBox.setHgrow(tab, Priority.ALWAYS); tabs.getChildren().add(tab);
         }
@@ -258,7 +262,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
 
     private HBox identity() {
         Hyperlink logout = new Hyperlink("Cerrar sesi\u00f3n");
-        logout.setOnAction(e -> { SessionManager.logout(); selectedProject = null; selectedVideo = null; profileImage = null; pendingVideos.clear(); loginPassword.clear(); loginMessage.setText(""); show("login"); });
+        logout.setOnAction(e -> { SessionManager.logout(); selectedProject = null; selectedVideo = null; selectedProcessedId = null; activity.clear(); profileImage = null; pendingVideos.clear(); loginPassword.clear(); loginMessage.setText(""); show("login"); });
         HBox user = new HBox(7, avatar(40), new VBox(0, new Label(username()), logout)); user.setAlignment(Pos.CENTER_LEFT); return user;
     }
 
@@ -405,7 +409,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
 
     private void deleteProject() {
         if (selectedProject == null || !confirm("Eliminar proyecto", "Se eliminar\u00e1n el proyecto y sus asociaciones de video. Los archivos originales se conservar\u00e1n.")) return;
-        try { VideoRepository.deleteByGroup(selectedProject.getId()); VideoGroupRepository.deleteById(selectedProject.getId()); selectedProject = null; selectedVideo = null; pendingVideos.clear(); show("projects"); }
+        try { ProcessedVideoRepository.removeByProject(selectedProject.getId()); VideoRepository.deleteByGroup(selectedProject.getId()); VideoGroupRepository.deleteById(selectedProject.getId()); selectedProject = null; selectedVideo = null; pendingVideos.clear(); show("projects"); }
         catch (RuntimeException e) { error(e); }
     }
 
@@ -466,23 +470,22 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             VBox empty = new VBox(20, heading("Selecciona un proyecto", false), button("Ver proyectos", "primary", () -> show("projects"))); empty.setAlignment(Pos.CENTER); return empty;
         }
         List<Video> videos = VideoRepository.findByGroup(selectedProject.getId());
-        VBox logs = sidePanel("Registros"); ListView<String> entries = new ListView<>(); entries.setMinHeight(100); entries.setPrefHeight(200); VBox.setVgrow(entries, Priority.ALWAYS); logs.getChildren().add(entries);
-        entries.setStyle("-fx-border-width: 0; -fx-background-color: transparent; -fx-padding: 0;");
-        entries.setCellFactory(list -> new ListCell<String>() {
-            private final Label text = new Label();
-            { text.setWrapText(true); text.maxWidthProperty().bind(entries.widthProperty().subtract(30)); }
-            @Override protected void updateItem(String value, boolean empty) {
-                super.updateItem(value, empty); setText(null); text.setText(value); setGraphic(empty ? null : text);
-            }
-        });
-        PlaybackPane player = newPlayer(false, text -> { entries.getItems().add(PlaybackPane.format(playerTime()) + "  " + text); if (entries.getItems().size() > 100) entries.getItems().remove(0); entries.scrollTo(entries.getItems().size() - 1); });
+        javafx.collections.ObservableList<ActivityLog.Entry> history = javafx.collections.FXCollections.observableArrayList();
+        PlaybackPane player = newPlayer(false, text -> logVideo(selectedVideo, PlaybackPane.format(playerTime()), text, text.startsWith("No ") || text.startsWith("Error")));
         RegionEditor regions = new RegionEditor(player);
         ComboBox<Video> choices = new ComboBox<>(); choices.setId("video-choice"); choices.setPrefWidth(300); choices.getItems().setAll(videos);
         choices.setConverter(new javafx.util.StringConverter<Video>() {
             @Override public String toString(Video value) { return value == null ? "Seleccionar video" : value.getTitle(); }
             @Override public Video fromString(String text) { return null; }
         });
-        choices.valueProperty().addListener((obs, old, item) -> { selectedVideo = item; regions.setVideo(item); if (item != null) openVideo(player, MediaFiles.resolve(item.getFilePath()), false); else { cancelPreparation(player); player.close(); } });
+        TabPane inspector = new TabPane(); inspector.setId("video-inspector"); inspector.getStyleClass().add("inspector-tabs"); inspector.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE); inspector.setMinHeight(0);
+        ScrollPane regionScroll = new ScrollPane(regions); regionScroll.setFitToWidth(true); regionScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER); regionScroll.getStyleClass().add("plain-scroll");
+        Tab regionTab = new Tab("Regiones", regionScroll); Tab logTab = new Tab("Registros", new ActivityLog(history)); inspector.getTabs().addAll(regionTab, logTab);
+        choices.valueProperty().addListener((obs, old, item) -> {
+            selectedVideo = item; regions.setVideo(item);
+            logTab.setContent(new ActivityLog(item == null ? history : historyFor(item)));
+            if (item != null) openVideo(player, MediaFiles.resolve(item.getFilePath()), false); else { cancelPreparation(player); player.close(); }
+        });
         Video initial = selectedVideo == null ? null : videos.stream().filter(v -> v.getId().equals(selectedVideo.getId())).findFirst().orElse(null);
         choices.setValue(initial == null && !videos.isEmpty() ? videos.get(0) : initial);
         Button load = button("A\u00f1adir video", "outline", () -> chooseVideo(file -> associateVideos(Collections.singletonList(file), () -> { selectedVideo = VideoRepository.findByGroup(selectedProject.getId()).stream().filter(v -> MediaFiles.resolve(v.getFilePath()).equals(file)).findFirst().orElse(null); show("video"); })));
@@ -492,15 +495,19 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             }
         });
         remove.disableProperty().bind(choices.valueProperty().isNull());
+        choices.setMinWidth(120); choices.setMaxWidth(300); choices.setPrefWidth(250);
+        load.setMinWidth(0); load.setPrefWidth(145); remove.setMinWidth(0); remove.setPrefWidth(145);
         HBox tools = new HBox(10, choices, load, remove, iconButton("zoom", "Acercar", () -> player.setZoom(2)), iconButton("reset", "Restablecer zoom", player::resetZoom));
         tools.getStyleClass().add("mode-toolbar"); tools.setAlignment(Pos.CENTER_LEFT);
-        VBox sidebar = new VBox(20, identity(), regions, pythonPanel(choices, player, regions), logs); sidebar.setMinWidth(240); sidebar.setPrefWidth(240); sidebar.setMaxWidth(240); sidebar.setPadding(new Insets(16, 20, 20, 0)); VBox.setVgrow(logs, Priority.ALWAYS);
-        sidebar.setMinWidth(0);
-        ScrollPane sidebarScroll = new ScrollPane(sidebar); sidebarScroll.setFitToWidth(true); sidebarScroll.setFitToHeight(true);
-        sidebarScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        sidebarScroll.setMinWidth(240); sidebarScroll.setPrefWidth(240); sidebarScroll.setMaxWidth(240);
-        sidebarScroll.setStyle("-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0;");
-        BorderPane page = new BorderPane(); page.setTop(tools); player.setPadding(new Insets(20, 25, 30, 20)); page.setCenter(player); page.setRight(sidebarScroll); return page;
+        VBox sidebar = new VBox(12, identity(), inspector, pythonPanel(choices, player, regions)); sidebar.setId("video-sidebar"); sidebar.setMinWidth(310); sidebar.setPrefWidth(310); sidebar.setMaxWidth(310); sidebar.setMinHeight(0); sidebar.setPadding(new Insets(12, 16, 16, 0)); VBox.setVgrow(inspector, Priority.ALWAYS);
+        BorderPane page = new BorderPane(); page.setTop(tools); player.setPadding(new Insets(12, 16, 16, 16)); page.setCenter(player); page.setRight(sidebar); return page;
+    }
+
+    private javafx.collections.ObservableList<ActivityLog.Entry> historyFor(Video video) {
+        return activity.computeIfAbsent(video.getId(), id -> javafx.collections.FXCollections.observableArrayList());
+    }
+    private void logVideo(Video video, String time, String text, boolean error) {
+        if (video != null && SessionManager.isLoggedIn() && SessionManager.getCurrentUser().getId().equals(video.getOwnerId())) ActivityLog.append(historyFor(video), time, Objects.toString(text, "Error sin detalle"), error);
     }
 
     private javafx.util.Duration playerTime() {
@@ -508,14 +515,26 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     }
 
     private VBox pythonPanel(ComboBox<Video> choices, PlaybackPane player, RegionEditor regions) {
-        VBox panel = sidePanel("Python");
+        final String paneProject = selectedProject.getId();
+        VBox panel = sidePanel("Procesamiento"); panel.setId("processing-panel"); panel.setMinHeight(VBox.USE_PREF_SIZE);
         pythonAddress.setId("python-api-url");
         pythonAddress.setTooltip(new Tooltip("Direccion de la API local de Python"));
-        Label connection = new Label(); connection.textProperty().bind(pythonStatus); connection.setWrapText(true);
+        Label connection = new Label(); connection.textProperty().bind(javafx.beans.binding.Bindings.when(pythonStatus.isEmpty()).then("Servidor local").otherwise(pythonStatus)); connection.setWrapText(true); connection.getStyleClass().add("muted");
         connection.setMaxWidth(Double.MAX_VALUE); connection.setId("python-connection-status");
-        Label status = new Label(); status.setWrapText(true); status.setMaxWidth(Double.MAX_VALUE);
+        Label status = new Label(); status.setId("processing-status"); status.setWrapText(true); status.setMaxWidth(Double.MAX_VALUE);
         javafx.beans.property.BooleanProperty busy = new javafx.beans.property.SimpleBooleanProperty(false);
-        Button view = button("Ver resultado", "outline", () -> {}); view.setDisable(true);
+        ProgressBar progress = new ProgressBar(); progress.setId("processing-progress"); progress.setMaxWidth(Double.MAX_VALUE); progress.visibleProperty().bind(busy); progress.managedProperty().bind(busy);
+        Button view = button("Ver resultado", "outline", () -> {
+            Video current = choices.getValue(); if (current == null) return;
+            ProcessedVideo result = ProcessedVideoRepository.findByProject(paneProject).stream().filter(v -> current.getId().equals(v.getSourceId())).findFirst().orElse(null);
+            if (result != null) { selectedProcessedId = result.getId(); show("processed"); }
+        }); view.setDisable(true);
+        Runnable refreshResult = () -> {
+            Video current = choices.getValue();
+            try { view.setDisable(current == null || busy.get() || !SessionManager.isLoggedIn() || ProcessedVideoRepository.findByProject(paneProject).stream().noneMatch(v -> current.getId().equals(v.getSourceId()))); }
+            catch (IllegalArgumentException ex) { view.setDisable(true); }
+        };
+        choices.valueProperty().addListener((obs, old, current) -> refreshResult.run()); refreshResult.run();
         Button process = button("Procesar video", "primary", () -> {
             Video video = choices.getValue(); if (video == null || apiTask != null) return;
             final JsonArray regionPayload;
@@ -538,19 +557,31 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                     }
                 };
                 apiTask = task; busy.set(true); view.setDisable(true);
+                progress.setProgress(-1); status.getStyleClass().remove("validation-message");
+                logVideo(video, PlaybackPane.format(playerTime()), "Analisis iniciado", false);
                 status.textProperty().bind(task.messageProperty());
+                task.messageProperty().addListener((obs, old, value) -> {
+                    if (apiTask != task || closed) return;
+                    java.util.regex.Matcher frames = java.util.regex.Pattern.compile("(\\d+)/(\\d+) frames").matcher(value);
+                    if (frames.find()) { double total = Double.parseDouble(frames.group(2)); progress.setProgress(total > 0 ? Math.min(.98, Double.parseDouble(frames.group(1)) / total) : -1); }
+                    else progress.setProgress(-1);
+                    logVideo(video, PlaybackPane.format(playerTime()), value, false);
+                });
                 task.setOnSucceeded(e -> {
                     if (apiTask != task || closed) return;
-                    apiTask = null; busy.set(false); status.textProperty().unbind(); status.setText("Video recibido");
-                    File result = task.getValue().toFile(); view.setDisable(false);
-                    view.setOnAction(event -> openVideo(player, result, false));
-                    openVideo(player, result, false);
+                    apiTask = null; busy.set(false); status.textProperty().unbind();
+                    try {
+                        ProcessedVideo result = ProcessedVideoRepository.record(projectId, video.getId(), task.getValue().toFile(), regionPayload);
+                        selectedProcessedId = result.getId(); status.setText("Resultado guardado"); refreshResult.run();
+                        logVideo(video, PlaybackPane.format(playerTime()), "Resultado listo: " + result.getFilename(), false);
+                        view.fire();
+                    } catch (IOException | RuntimeException ex) { status.setText("No se pudo registrar el resultado"); logVideo(video, PlaybackPane.format(playerTime()), ex.getMessage(), true); error(ex); }
                 });
                 task.setOnFailed(e -> {
                     if (apiTask != task || closed) return;
-                    apiTask = null; busy.set(false); status.textProperty().unbind(); status.setText("Error de conexion o procesamiento"); error(task.getException());
+                    apiTask = null; busy.set(false); status.textProperty().unbind(); status.setText("Error de conexion o procesamiento"); status.getStyleClass().add("validation-message"); refreshResult.run(); logVideo(video, PlaybackPane.format(playerTime()), task.getException().getMessage(), true); error(task.getException());
                 });
-                task.setOnCancelled(e -> { busy.set(false); status.textProperty().unbind(); status.setText("Cancelado"); });
+                task.setOnCancelled(e -> { busy.set(false); status.textProperty().unbind(); status.setText("Cancelado"); refreshResult.run(); logVideo(video, PlaybackPane.format(playerTime()), "Analisis cancelado", false); });
                 files.submit(task);
             } catch (RuntimeException | IOException ex) { error(ex); }
         });
@@ -560,8 +591,11 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         busy.addListener((obs, old, value) -> regions.setLocked(value));
         Button cancel = button("Cancelar", "outline", this::cancelApi); cancel.disableProperty().bind(busy.not());
         view.setId("python-result");
-        for (Button button : new Button[]{process, cancel, view}) button.setMaxWidth(Double.MAX_VALUE);
-        panel.getChildren().addAll(connection, pythonAddress, process, cancel, view, status); return panel;
+        for (Button button : new Button[]{process, cancel, view}) { button.setMinWidth(0); button.setMaxWidth(Double.MAX_VALUE); }
+        cancel.visibleProperty().bind(busy); cancel.managedProperty().bind(busy);
+        view.visibleProperty().bind(busy.not()); view.managedProperty().bind(busy.not());
+        TitledPane advanced = new TitledPane("Conexion", pythonAddress); advanced.setExpanded(false); advanced.getStyleClass().add("connection-settings");
+        panel.getChildren().addAll(connection, progress, status, process, cancel, view, advanced); return panel;
     }
 
     public void pythonConnecting() { pythonAvailable.set(false); pythonStatus.set("Conectando..."); pythonAddress.setEditable(false); }
@@ -572,6 +606,94 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
 
     private PlaybackPane newPlayer(boolean compact, Consumer<String> log) { PlaybackPane player = new PlaybackPane(compact, log); players.add(player); return player; }
     private VBox sidePanel(String title) { VBox box = new VBox(10, heading(title, false)); box.getStyleClass().add("side-panel"); box.setPadding(new Insets(10)); return box; }
+
+    private Node processed() {
+        if (selectedProject == null) {
+            VBox empty = new VBox(20, heading("Selecciona un proyecto", false), button("Ver proyectos", "primary", () -> show("projects"))); empty.setAlignment(Pos.CENTER); return empty;
+        }
+        String projectId = selectedProject.getId();
+        javafx.collections.ObservableList<ProcessedVideo> stored = javafx.collections.FXCollections.observableArrayList(ProcessedVideoRepository.findByProject(projectId));
+        javafx.collections.transformation.FilteredList<ProcessedVideo> filtered = new javafx.collections.transformation.FilteredList<>(stored);
+        ListView<ProcessedVideo> list = new ListView<>(filtered); list.setId("processed-list"); list.setPlaceholder(new Label("Sin videos procesados")); list.setMinHeight(0); VBox.setVgrow(list, Priority.ALWAYS);
+        list.setCellFactory(view -> new ListCell<ProcessedVideo>() {
+            @Override protected void updateItem(ProcessedVideo item, boolean empty) {
+                super.updateItem(item, empty); setText(null); setGraphic(null);
+                if (!empty && item != null) {
+                    Label name = new Label(item.getFilename()); name.setWrapText(true); name.setMaxWidth(250); name.getStyleClass().add("result-title");
+                    Label date = new Label(resultDate(item.getCreatedAt())); date.getStyleClass().add("muted");
+                    Label source = new Label(item.getSourceName()); source.setWrapText(true); source.setMaxWidth(250); source.getStyleClass().add("muted");
+                    for (Label label : new Label[]{name, date, source}) label.textFillProperty().bind(javafx.beans.binding.Bindings.when(selectedProperty()).then(Color.WHITE).otherwise(label == name ? Color.web("#202020") : Color.web("#686868")));
+                    setGraphic(new VBox(4, name, date, source)); setTooltip(new Tooltip(item.getFilePath()));
+                } else setTooltip(null);
+            }
+        });
+        Label name = new Label("Selecciona un resultado"); name.setId("processed-name"); name.getStyleClass().add("section-heading"); name.setWrapText(true); name.setMaxWidth(Double.MAX_VALUE);
+        Label details = new Label(); details.setId("processed-details"); details.setWrapText(true); details.setMaxWidth(Double.MAX_VALUE); details.getStyleClass().add("muted");
+        Label state = new Label(); state.setWrapText(true); state.setMaxWidth(Double.MAX_VALUE); state.setId("processed-state");
+        PlaybackPane player = newPlayer(false, state::setText);
+        Button original = button("Ver original", "outline", () -> {
+            ProcessedVideo item = list.getSelectionModel().getSelectedItem(); if (item == null) return;
+            selectedVideo = VideoRepository.findByGroup(projectId).stream().filter(v -> item.getSourceId().equals(v.getId())).findFirst().orElse(null);
+            if (selectedVideo == null) { state.setText("El original ya no esta asociado al proyecto."); return; } show("video");
+        }); original.setId("processed-original"); original.disableProperty().bind(list.getSelectionModel().selectedItemProperty().isNull());
+        Button remove = button("Quitar del historial", "outline", () -> {
+            ProcessedVideo item = list.getSelectionModel().getSelectedItem();
+            if (item != null && confirm("Quitar resultado", "Se quitara del historial. El archivo de video se conservara.")) {
+                ProcessedVideoRepository.remove(projectId, item.getId()); stored.remove(item); if (!filtered.isEmpty()) list.getSelectionModel().select(0);
+            }
+        }); remove.setId("processed-remove"); remove.disableProperty().bind(list.getSelectionModel().selectedItemProperty().isNull());
+        for (Button button : new Button[]{original, remove}) { button.setMinWidth(0); button.setMaxWidth(Double.MAX_VALUE); }
+        list.getSelectionModel().selectedItemProperty().addListener((obs, old, item) -> {
+            if (item == null) { cancelPreparation(player); player.close(); name.setText("Selecciona un resultado"); details.setText(""); state.setText(""); return; }
+            selectedProcessedId = item.getId(); name.setText(item.getFilename());
+            int count = item.getRegions().size(); details.setText(resultDate(item.getCreatedAt()) + "  |  " + count + (count == 1 ? " region\n" : " regiones\n") + item.getFilePath());
+            File file = new File(item.getFilePath());
+            if (!file.isFile()) { cancelPreparation(player); player.showError("El archivo procesado fue movido o eliminado."); return; }
+            openVideo(player, file, false);
+        });
+        TextField search = new TextField(); search.setId("processed-search"); search.setPromptText("Buscar resultados");
+        search.textProperty().addListener((obs, old, value) -> {
+            String query = value.toLowerCase(Locale.ROOT); filtered.setPredicate(item -> (item.getFilename() + " " + item.getSourceName()).toLowerCase(Locale.ROOT).contains(query));
+            if (list.getSelectionModel().getSelectedItem() == null && !filtered.isEmpty()) list.getSelectionModel().select(0);
+        });
+        Button refresh = iconButton("reset", "Actualizar resultados", () -> {
+            stored.setAll(ProcessedVideoRepository.findByProject(projectId));
+            ProcessedVideo active = filtered.stream().filter(item -> item.getId().equals(selectedProcessedId)).findFirst().orElse(filtered.isEmpty() ? null : filtered.get(0)); list.getSelectionModel().select(active);
+        }); refresh.setId("processed-refresh");
+        Button link = button("Vincular resultado", "outline", () -> {
+            List<Video> originals = VideoRepository.findByGroup(projectId);
+            if (originals.isEmpty()) { state.setText("Asocia primero un video original al proyecto."); return; }
+            Dialog<Video> dialog = new Dialog<>(); dialog.initOwner(stage); dialog.setTitle("Video original del resultado");
+            dialog.getDialogPane().getStylesheets().add(getClass().getResource("/styles/workspace.css").toExternalForm()); dialog.getDialogPane().getStyleClass().add("workspace");
+            ComboBox<Video> sources = new ComboBox<>(); sources.getItems().setAll(originals); sources.setMaxWidth(Double.MAX_VALUE);
+            sources.setConverter(new javafx.util.StringConverter<Video>() {
+                @Override public String toString(Video value) { return value == null ? "" : value.getTitle(); }
+                @Override public Video fromString(String text) { return null; }
+            });
+            sources.setValue(originals.stream().filter(v -> selectedVideo != null && v.getId().equals(selectedVideo.getId())).findFirst().orElse(originals.get(0)));
+            dialog.getDialogPane().setContent(new VBox(8, new Label("Video original"), sources));
+            dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL); dialog.setResultConverter(type -> type == ButtonType.OK ? sources.getValue() : null);
+            dialog.showAndWait().ifPresent(source -> {
+                FileChooser chooser = new FileChooser(); chooser.setTitle("Seleccionar video procesado"); chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Videos", "*.mp4", "*.mov", "*.avi", "*.mkv"));
+                File file = chooser.showOpenDialog(stage); if (file == null) return;
+                try {
+                    JsonArray regions = new JsonArray(); for (VideoRegion region : VideoRepository.findRegions(source.getId())) regions.add(region.toJson());
+                    ProcessedVideo result = ProcessedVideoRepository.record(projectId, source.getId(), file, regions); stored.setAll(ProcessedVideoRepository.findByProject(projectId)); search.clear(); list.getSelectionModel().select(stored.stream().filter(v -> v.getId().equals(result.getId())).findFirst().orElse(null));
+                } catch (IOException | RuntimeException ex) { error(ex); }
+            });
+        }); link.setId("processed-link"); link.setMinWidth(0); link.setMaxWidth(Double.MAX_VALUE);
+        HBox searchbar = new HBox(6, search, refresh); HBox.setHgrow(search, Priority.ALWAYS);
+        Label title = heading("Procesados", true); Label project = new Label(selectedProject.getName()); project.setWrapText(true); project.getStyleClass().add("muted");
+        VBox library = new VBox(12, title, project, searchbar, link, list, original, remove); library.setId("processed-library"); library.setMinWidth(300); library.setPrefWidth(300); library.setMaxWidth(300); library.setPadding(new Insets(20, 12, 20, 20));
+        VBox preview = new VBox(10, name, details, player, state); preview.setMinWidth(0); preview.setPadding(new Insets(20)); VBox.setVgrow(player, Priority.ALWAYS);
+        BorderPane page = new BorderPane(preview); page.setLeft(library);
+        ProcessedVideo initial = filtered.stream().filter(item -> item.getId().equals(selectedProcessedId)).findFirst().orElse(filtered.isEmpty() ? null : filtered.get(0)); list.getSelectionModel().select(initial);
+        return page;
+    }
+
+    private static String resultDate(long time) {
+        return java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").format(java.time.Instant.ofEpochMilli(time).atZone(java.time.ZoneId.systemDefault()));
+    }
 
     private Node data() {
         TableView<Video> table = new TableView<>(); table.setPlaceholder(new Label("No hay videos en el proyecto"));
@@ -644,7 +766,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     public void writeSnapshots() {
         try {
             File output = new File("target/ui-snapshots"); if (!output.isDirectory() && !output.mkdirs()) throw new IOException("Cannot create snapshots");
-            List<String> screens = SessionManager.isLoggedIn() ? Arrays.asList("projects", "video", "data") : Arrays.asList("login");
+        List<String> screens = SessionManager.isLoggedIn() ? Arrays.asList("projects", "video", "processed", "data") : Arrays.asList("login");
             for (String name : screens) for (int[] size : new int[][]{{1000, 740}, {1440, 900}}) {
                 show(name); resize(size[0], size[1]); applyCss(); layout(); WritableImage snapshot = snapshot(null, null);
                 BufferedImage image = new BufferedImage((int) snapshot.getWidth(), (int) snapshot.getHeight(), BufferedImage.TYPE_INT_ARGB);
