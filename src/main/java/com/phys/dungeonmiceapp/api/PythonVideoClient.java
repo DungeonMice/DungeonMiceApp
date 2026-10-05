@@ -79,7 +79,7 @@ public final class PythonVideoClient {
         String id;
         try (InputStream body = job.body()) {
             byte[] bytes = body.readNBytes(65537);
-            if (job.statusCode() != 201) throw new IOException("Python rechazo los metadatos (HTTP " + job.statusCode() + ").");
+            if (job.statusCode() != 201) throw responseError("Python rechazo los metadatos", job.statusCode(), bytes);
             if (bytes.length > 65536) throw new IOException("Respuesta de metadatos demasiado grande.");
             try {
                 id = JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8)).getAsJsonObject().get("jobId").getAsString();
@@ -87,15 +87,33 @@ public final class PythonVideoClient {
         }
         if (!id.matches("[A-Za-z0-9_-]{1,128}")) throw new IOException("Identificador de trabajo invalido.");
         if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Transferencia cancelada.");
-        progress.accept("Enviando video y esperando resultado...");
+        progress.accept("Enviando video y procesando en Python...");
         Path partial = Files.createTempFile(parent, ".dungeonmice-result-", ".part");
+        ScheduledExecutorService polling = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r, "dungeonmice-api-progress"); thread.setDaemon(true); return thread;
+        });
+        URI statusUrl = base.resolve("api/v1/jobs/" + id + "/status");
+        polling.scheduleWithFixedDelay(() -> {
+            try {
+                HttpRequest request = HttpRequest.newBuilder(statusUrl).timeout(Duration.ofSeconds(2)).GET().build();
+                HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                try (InputStream body = response.body()) {
+                    byte[] bytes = body.readNBytes(4097);
+                    if (response.statusCode() != 200 || bytes.length > 4096) return;
+                    JsonElement message = JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8)).getAsJsonObject().get("message");
+                    if (message != null && message.isJsonPrimitive() && message.getAsJsonPrimitive().isString()) progress.accept(message.getAsString());
+                }
+            } catch (IOException | InterruptedException | RuntimeException ignored) { /* Optional for older API servers. */ }
+        }, 1, 1, TimeUnit.SECONDS);
         try {
             HttpRequest upload = HttpRequest.newBuilder(base.resolve("api/v1/jobs/" + id + "/video")).timeout(timeout)
                     .header("Content-Type", "application/octet-stream")
                     .PUT(HttpRequest.BodyPublishers.ofFile(source)).build();
             // The HTTP implementation streams both files; the complete video never becomes a byte[].
-            HttpResponse<Path> result = http.send(upload, HttpResponse.BodyHandlers.ofFile(partial));
-            if (result.statusCode() != 200) throw new IOException("Python no pudo procesar el video (HTTP " + result.statusCode() + ").");
+            HttpResponse<Void> result = download(upload, partial);
+            if (result.statusCode() != 200) {
+                try (InputStream error = Files.newInputStream(partial)) { throw responseError("Python no pudo procesar el video", result.statusCode(), error.readNBytes(65537)); }
+            }
             String type = result.headers().firstValue("Content-Type").orElse("").toLowerCase(java.util.Locale.ROOT);
             if (!(type.startsWith("video/") || type.startsWith("application/octet-stream")))
                 throw new IOException("Python no devolvio un archivo de video.");
@@ -104,6 +122,30 @@ public final class PythonVideoClient {
             Files.move(partial, destination); // Never replace the original or an existing result.
             progress.accept("Video recibido: " + destination);
             return destination;
-        } finally { Files.deleteIfExists(partial); }
+        } finally { polling.shutdownNow(); Files.deleteIfExists(partial); }
+    }
+
+    private HttpResponse<Void> download(HttpRequest request, Path partial) throws IOException, InterruptedException {
+        Object gate = new Object(); boolean[] closed = {false};
+        OutputStream output = Files.newOutputStream(partial);
+        try {
+            // Own the file handle so a late HTTP callback cannot recreate a deleted
+            // partial file after cancellation (BodyHandlers.ofFile can do this).
+            return http.send(request, HttpResponse.BodyHandlers.ofByteArrayConsumer(chunk -> chunk.ifPresent(bytes -> {
+                synchronized (gate) {
+                    if (closed[0]) return;
+                    try { output.write(bytes); } catch (IOException ex) { throw new UncheckedIOException(ex); }
+                }
+            })));
+        } finally { synchronized (gate) { closed[0] = true; output.close(); } }
+    }
+
+    private static IOException responseError(String message, int code, byte[] body) {
+        String detail = "";
+        if (body.length <= 65536) try {
+            JsonElement error = JsonParser.parseString(new String(body, StandardCharsets.UTF_8)).getAsJsonObject().get("error");
+            if (error != null && error.isJsonPrimitive() && error.getAsJsonPrimitive().isString()) detail = ": " + error.getAsString().substring(0, Math.min(600, error.getAsString().length()));
+        } catch (RuntimeException ignored) { /* Non-JSON errors retain their HTTP status. */ }
+        return new IOException(message + " (HTTP " + code + ")" + detail);
     }
 }

@@ -60,6 +60,10 @@ public final class PythonApiChecks {
             CountDownLatch downloadStarted = new CountDownLatch(1);
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.setExecutor(workers);
+            server.createContext("/api/v1/jobs/job-1/status", exchange -> {
+                byte[] body = "{\"message\":\"Procesando: 300/927 frames\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, body.length); exchange.getResponseBody().write(body); exchange.close();
+            });
             server.createContext("/api/v1/jobs", exchange -> {
                 try {
                     if (exchange.getRequestMethod().equals("POST")) {

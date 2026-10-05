@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 from pathlib import Path
 import socket
 import tempfile
+import json
 from types import SimpleNamespace
 import dungeonmice_api_bridge as bridge
 
@@ -24,6 +25,34 @@ class BridgeChecks(unittest.TestCase):
     def test_native_circle_is_preserved(self):
         regions = [{"type": "CircleRegion", "id": "pool", "center": [20, 30], "radius": 15}]
         self.assertEqual(bridge.normalize_regions(regions), regions)
+
+    def test_names_threshold_and_area_validated(self):
+        triangle = {"id": "este", "points": [[1, 2], [4, 2], [4, 5]]}
+        with self.assertRaisesRegex(ValueError, "diferentes"):
+            bridge.normalize_regions([triangle, dict(triangle, id="ESTE")])
+        with self.assertRaisesRegex(ValueError, "solapamiento"):
+            bridge.normalize_regions([dict(triangle, overlap_threshold=float("nan"))])
+        with self.assertRaisesRegex(ValueError, "area"):
+            bridge.normalize_regions([dict(triangle, points=[[1, 1], [2, 2], [3, 3]])])
+        with self.assertRaises(ValueError):
+            bridge.normalize_regions([dict(triangle, points=[{}, [4, 2], [4, 5]])])
+
+    def test_crossmaze_validation_before_upload(self):
+        old_options = bridge.OPTIONS
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                config = Path(folder) / "preset.json"
+                config.write_text(json.dumps({"labyrinth_type": "CrossMaze"}))
+                bridge.OPTIONS = SimpleNamespace(config=config)
+                triangle = {"id": "norte", "points": [[1, 2], [4, 2], [4, 5]]}
+                with self.assertRaisesRegex(ValueError, "dos regiones"):
+                    bridge.validate_metadata({"regions": [triangle]})
+                metadata = {"regions": [triangle, dict(triangle, id="sur")]}
+                bridge.validate_metadata(metadata)
+                self.assertEqual(metadata["regions"][0]["type"], "PolygonRegion")
+                bridge.validate_metadata({"regions": []})
+        finally:
+            bridge.OPTIONS = old_options
 
     def test_display_adapter_writes_only_annotated_frame(self):
         cv2 = Mock()

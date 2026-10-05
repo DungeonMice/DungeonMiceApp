@@ -5,6 +5,7 @@ import json
 import math
 import hmac
 import os
+import re
 from pathlib import Path
 import select
 import shutil
@@ -24,23 +25,55 @@ WORKERS = set()
 WORKER_LOCK = threading.Lock()
 STOPPING = threading.Event()
 OPTIONS = None
+PROGRESS = {}
+PROGRESS_LOCK = threading.Lock()
+
+
+def set_progress(job, message):
+    if job:
+        with PROGRESS_LOCK:
+            PROGRESS[job] = message
 
 
 def normalize_regions(regions):
+    if not isinstance(regions, list) or len(regions) > 32:
+        raise ValueError("Maximo 32 regiones por video.")
     result = copy.deepcopy(regions)
+    ids = set()
     for region in result:
-        if not isinstance(region, dict) or not isinstance(region.get("id"), str):
-            raise ValueError("Each region needs an id")
+        if not isinstance(region, dict) or not isinstance(region.get("id"), str) or not region["id"].strip() or len(region["id"]) > 60:
+            raise ValueError("Cada region necesita un nombre de 1 a 60 caracteres.")
+        key = region["id"].strip().casefold()
+        if key in ids:
+            raise ValueError("Los nombres de las regiones deben ser diferentes.")
+        ids.add(key)
+        threshold = region.get("overlap_threshold", 0)
+        if not isinstance(threshold, (float, int)) or not math.isfinite(threshold) or not 0 <= threshold <= 1:
+            raise ValueError("El solapamiento debe estar entre 0 y 1.")
         region.setdefault("type", "PolygonRegion")
         if region["type"] == "PolygonRegion":
             points = region.get("points", [])
-            if len(points) < 3:
-                raise ValueError("Polygons need at least three points")
-            region["points"] = [[p["x"], p["y"]] if isinstance(p, dict) else p for p in points]
-            if any(len(p) != 2 or any(not isinstance(v, (float, int)) or not math.isfinite(v) for v in p)
+            if not isinstance(points, list) or not 3 <= len(points) <= 128:
+                raise ValueError("La region necesita entre 3 y 128 vertices.")
+            region["points"] = [[p.get("x"), p.get("y")] if isinstance(p, dict) else p for p in points]
+            if any(not isinstance(p, (list, tuple)) or len(p) != 2 or any(isinstance(v, bool) or not isinstance(v, (float, int)) or not math.isfinite(v) or v < 0 for v in p)
                    for p in region["points"]):
                 raise ValueError("Polygon coordinates must be finite x/y pairs")
+            pairs = region["points"]
+            area = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(pairs, pairs[1:] + pairs[:1]))
+            if abs(area) < 2:
+                raise ValueError("La region no tiene area suficiente.")
     return result
+
+
+def validate_metadata(metadata):
+    if not metadata["regions"]:
+        return  # Preserve the legacy manual client's explicit preset fallback.
+    regions = normalize_regions(metadata["regions"])
+    preset = json.loads(OPTIONS.config.read_text(encoding="utf-8"))
+    if preset["labyrinth_type"] == "CrossMaze" and (len(regions) < 2 or any(r["type"] != "PolygonRegion" for r in regions)):
+        raise ValueError("CrossMaze requiere al menos dos regiones poligonales guardadas.")
+    metadata["regions"] = regions
 
 
 class HeadlessVideo:
@@ -52,6 +85,7 @@ class HeadlessVideo:
         self.writer = None
         self.frames = 0
         self.fps = 0
+        self.total = 0
 
     def __getattr__(self, name):
         return getattr(self.cv2, name)
@@ -59,6 +93,7 @@ class HeadlessVideo:
     def VideoCapture(self, filename):
         self.capture = self.cv2.VideoCapture(filename)
         self.fps = self.capture.get(self.cv2.CAP_PROP_FPS)
+        self.total = int(self.capture.get(self.cv2.CAP_PROP_FRAME_COUNT))
         if not self.capture.isOpened() or not math.isfinite(self.fps) or self.fps < 1:
             self.close()
             raise ValueError("DungeonMice could not decode the uploaded video")
@@ -86,7 +121,7 @@ class HeadlessVideo:
         self.writer.write(frame)
         self.frames += 1
         if self.frames % 300 == 0:
-            print(f"Processed {self.frames} frames", flush=True)
+            print(f"Processed {self.frames}/{self.total} frames", flush=True)
 
     def waitKey(self, *args):
         return -1
@@ -116,9 +151,22 @@ def run_worker(request_path):
     if metadata.get("regions"):
         config["regions"] = normalize_regions(metadata["regions"])
     else:
-        # The Java UI has no region editor yet. Use the operator-selected preset.
+        # Legacy manual clients can still request the operator-selected preset.
         config["regions"] = normalize_regions(config["regions"])
     source = Path(request["source"])
+    if metadata.get("regions"):
+        capture = cv2.VideoCapture(str(source))
+        try:
+            width, height = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            if not capture.isOpened() or width <= 0 or height <= 0:
+                raise ValueError("No se pudo leer la resolucion del video.")
+            for region in config["regions"]:
+                if region.get("frameWidth", width) != width or region.get("frameHeight", height) != height:
+                    raise ValueError("La resolucion cambio. Vuelve a dibujar las regiones.")
+                if region["type"] == "PolygonRegion" and any(x >= width or y >= height for x, y in region["points"]):
+                    raise ValueError("Hay vertices fuera del video.")
+        finally:
+            capture.release()
     config["video_path"] = str(source)
     config_path = folder / "experiment-api.json"
     config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
@@ -136,6 +184,7 @@ def run_worker(request_path):
         if len(results) != 5 or results[0] is None or display.frames == 0:
             raise ValueError("DungeonMice did not produce video results")
         states, trajectory_x, trajectory_y, first_frame, recording_duration = results
+        print("Stage: Generando video y resultados", flush=True)
         # Mux a silent AAC clock track without re-encoding frames. VLC's callback
         # input needs a stable MP4 clock for seeking these video-only exports.
         subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-i", str(encoded),
@@ -204,17 +253,30 @@ def process_video(source, metadata):
         with WORKER_LOCK:
             WORKERS.add(worker)
         started = time.monotonic()
+        last_progress = started - 1
+        set_progress(getattr(ACTIVE, "job", None), "Iniciando analisis en Python...")
         try:
             while worker.poll() is None:
                 if disconnected(ACTIVE.connection):
                     raise ValueError("Java disconnected; processing cancelled")
                 if time.monotonic() - started > OPTIONS.timeout:
                     raise ValueError("DungeonMice processing timed out")
+                if time.monotonic() - last_progress >= 1:
+                    with (folder / "worker.log").open("rb") as output:
+                        output.seek(max(0, output.seek(0, 2) - 4096))
+                        lines = output.read().decode("utf-8", errors="replace")
+                    progress = re.findall(r"Processed (\d+)/(\d+) frames|Stage: ([^\r\n]+)", lines)
+                    if progress:
+                        frames, total, stage = progress[-1]
+                        message = stage if stage else f"Procesando: {frames}/{total} frames"
+                        set_progress(getattr(ACTIVE, "job", None), message)
+                    last_progress = time.monotonic()
                 time.sleep(.2)
             if worker.returncode != 0:
                 detail = (folder / "worker.log").read_text(encoding="utf-8", errors="replace")[-4000:]
                 print(detail, file=sys.stderr, flush=True)
-                raise ValueError("DungeonMice processing failed; see server console")
+                last_line = next((line.strip() for line in reversed(detail.splitlines()) if line.strip()), "Error desconocido")
+                raise ValueError("Python: " + last_line[:500])
             summary = json.loads((folder / "worker-result.json").read_text(encoding="utf-8"))
             print("DungeonMice result: " + json.dumps(summary), flush=True)
             return folder / "processed.mp4"
@@ -225,6 +287,20 @@ def process_video(source, metadata):
 
 
 class Handler(protocol.Handler):
+    def reply(self, status, payload):
+        if status == 201 and "jobId" in payload:
+            with PROGRESS_LOCK:
+                if len(PROGRESS) >= 100:
+                    PROGRESS.pop(next(iter(PROGRESS)))
+                PROGRESS[payload["jobId"]] = "Esperando video..."
+        super().reply(status, payload)
+
+    def do_GET(self):
+        match = re.fullmatch(r"/api/v1/jobs/([a-f0-9]{32})/status", self.path)
+        with PROGRESS_LOCK:
+            message = PROGRESS.get(match.group(1)) if match else None
+        self.reply(200, {"message": message}) if message else self.reply(404, {"error": "Unknown job"})
+
     def do_POST(self):
         if self.path == "/api/v1/shutdown":
             expected = os.environ.get("DUNGEONMICE_SHUTDOWN_TOKEN", "")
@@ -246,10 +322,16 @@ class Handler(protocol.Handler):
             self.reply(503, {"error": "Another video is being processed; try again later"})
             return
         ACTIVE.connection = self.connection
+        match = re.fullmatch(r"/api/v1/jobs/([a-f0-9]{32})/video", self.path)
+        ACTIVE.job = match.group(1) if match else None
+        set_progress(ACTIVE.job, "Recibiendo video...")
         try:
             super().do_PUT()
         finally:
             ACTIVE.connection = None
+            with PROGRESS_LOCK:
+                PROGRESS.pop(ACTIVE.job, None)
+            ACTIVE.job = None
             PROCESS_SLOT.release()
 
 
@@ -281,6 +363,7 @@ def main():
     print(f"Dependencies: OpenCV {cv2.__version__}, NumPy {numpy.__version__}, openpyxl {openpyxl.__version__}", flush=True)
     OPTIONS = args
     protocol.process_video = process_video
+    protocol.validate_metadata = validate_metadata
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = False
     print(f"DungeonMice API: http://127.0.0.1:{server.server_port}", flush=True)

@@ -20,6 +20,11 @@ def process_video(input_path, metadata):
     return input_path
 
 
+def validate_metadata(metadata):
+    """Backend-specific validation hook before accepting an expensive upload."""
+    pass
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -54,6 +59,7 @@ class Handler(BaseHTTPRequestHandler):
                     or not 0 < size <= MAX_VIDEO or not isinstance(metadata.get("regions"), list)
                     or not isinstance(metadata.get("filename"), str)):
                 raise ValueError("Invalid metadata")
+            validate_metadata(metadata)
             job_id = uuid.uuid4().hex
             with LOCK:
                 now = time.monotonic()

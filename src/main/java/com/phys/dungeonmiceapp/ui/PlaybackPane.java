@@ -2,6 +2,9 @@ package com.phys.dungeonmiceapp.ui;
 
 import java.io.File;
 import java.util.function.Consumer;
+import java.util.*;
+import com.phys.dungeonmiceapp.model.VideoRegion;
+import javafx.geometry.Point2D;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -16,6 +19,12 @@ import javafx.util.Duration;
 public final class PlaybackPane extends VBox implements AutoCloseable {
     private final javafx.scene.image.ImageView view = new javafx.scene.image.ImageView();
     private final Region viewport;
+    private final Canvas regions = new Canvas();
+    private List<VideoRegion> regionData = Collections.emptyList();
+    private List<Point2D> draft = Collections.emptyList();
+    private Consumer<Point2D> regionClick;
+    private String highlighted;
+    private final javafx.beans.property.BooleanProperty videoReady = new javafx.beans.property.SimpleBooleanProperty(false);
     private final Label status = new Label("Selecciona un video");
     private final Label clock = new Label("00:00:00.000");
     private final Slider timeline = new Slider();
@@ -34,7 +43,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         this.log = log;
         view.setManaged(false); view.setPreserveRatio(true);
         viewport = new Region() {
-            { getChildren().addAll(view, status); status.setManaged(false); }
+            { getChildren().addAll(view, regions, status); status.setManaged(false); regions.setManaged(false); regions.setMouseTransparent(true); }
             @Override protected void layoutChildren() {
                 double width = Math.max(0, getWidth() - 2), height = Math.max(0, getHeight() - 2);
                 double aspect = player != null && player.getMedia().getHeight() > 0
@@ -42,6 +51,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
                 double fitWidth = Math.min(width, height * aspect), fitHeight = fitWidth / aspect;
                 view.setFitWidth(fitWidth); view.setFitHeight(fitHeight);
                 view.relocate((getWidth() - fitWidth) / 2, (getHeight() - fitHeight) / 2);
+                regions.setWidth(getWidth()); regions.setHeight(getHeight()); drawRegions();
                 status.autosize(); status.relocate((getWidth() - status.getWidth()) / 2, (getHeight() - status.getHeight()) / 2);
             }
         };
@@ -87,9 +97,15 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         });
         viewport.setOnMousePressed(e -> { mouseX = e.getSceneX(); mouseY = e.getSceneY(); });
         viewport.setOnMouseDragged(e -> {
-            if (zoom <= 1) return;
+            if (regionClick != null || zoom <= 1) return;
             panX += e.getSceneX() - mouseX; panY += e.getSceneY() - mouseY;
             mouseX = e.getSceneX(); mouseY = e.getSceneY(); clampPan();
+        });
+        viewport.setOnMouseClicked(e -> {
+            if (regionClick == null || e.getButton() != javafx.scene.input.MouseButton.PRIMARY) return;
+            Point2D point = sceneToVideo(e.getSceneX(), e.getSceneY());
+            if (point != null) regionClick.accept(point);
+            e.consume();
         });
     }
 
@@ -116,6 +132,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
             });
             loaded.setOnReady(() -> {
                 if (token != generation) return;
+                videoReady.set(true);
                 status.setVisible(false); timeline.setDisable(false); playbackControls.setDisable(false);
                 timeline.setMax(Math.max(.001, loaded.getTotalDuration().toSeconds()));
                 loaded.seek(Duration.ZERO); viewport.requestLayout();
@@ -154,15 +171,55 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         double maxY = Math.max(0, (view.getFitHeight() * zoom - viewport.getHeight()) / 2);
         panX = Math.max(-maxX, Math.min(maxX, panX)); panY = Math.max(-maxY, Math.min(maxY, panY)); applyTransform();
     }
-    private void applyTransform() { view.setScaleX(zoom); view.setScaleY(zoom); view.setTranslateX(panX); view.setTranslateY(panY); }
+    private void applyTransform() { view.setScaleX(zoom); view.setScaleY(zoom); view.setTranslateX(panX); view.setTranslateY(panY); drawRegions(); }
     public DirectPlayer getPlayer() { return player; }
     public Region getViewport() { return viewport; }
+    public javafx.beans.property.ReadOnlyBooleanProperty videoReadyProperty() { return videoReady; }
+    public void setRegionClickHandler(Consumer<Point2D> handler) {
+        regionClick = handler; viewport.setCursor(handler == null ? javafx.scene.Cursor.DEFAULT : javafx.scene.Cursor.CROSSHAIR);
+    }
+    public void setRegionOverlay(List<VideoRegion> data, List<Point2D> points, String selected) {
+        regionData = new ArrayList<>(data); draft = new ArrayList<>(points); highlighted = selected; drawRegions();
+    }
+    public Point2D sceneToVideo(double sceneX, double sceneY) {
+        if (!videoReady.get() || view.getFitWidth() <= 0 || view.getFitHeight() <= 0) return null;
+        Point2D viewportPoint = viewport.sceneToLocal(sceneX, sceneY);
+        if (!viewport.contains(viewportPoint)) return null;
+        Point2D local = view.sceneToLocal(sceneX, sceneY);
+        if (local.getX() < 0 || local.getY() < 0 || local.getX() >= view.getFitWidth() || local.getY() >= view.getFitHeight()) return null;
+        return new Point2D(Math.min(player.getMedia().getWidth() - 1, local.getX() / view.getFitWidth() * player.getMedia().getWidth()),
+                Math.min(player.getMedia().getHeight() - 1, local.getY() / view.getFitHeight() * player.getMedia().getHeight()));
+    }
+    public Point2D videoToScene(Point2D point) {
+        return view.localToScene(point.getX() / player.getMedia().getWidth() * view.getFitWidth(), point.getY() / player.getMedia().getHeight() * view.getFitHeight());
+    }
+    private Point2D overlayPoint(Point2D point) {
+        return view.localToParent(point.getX() / player.getMedia().getWidth() * view.getFitWidth(), point.getY() / player.getMedia().getHeight() * view.getFitHeight());
+    }
+    private void drawRegions() {
+        GraphicsContext g = regions.getGraphicsContext2D(); g.clearRect(0, 0, regions.getWidth(), regions.getHeight());
+        if (player == null || !videoReady.get()) return;
+        for (VideoRegion region : regionData) {
+            if (region.getWidth() != player.getMedia().getWidth() || region.getHeight() != player.getMedia().getHeight()) continue;
+            int count = region.getPoints().size(); double[] x = new double[count], y = new double[count];
+            for (int i = 0; i < count; i++) { Point2D p = overlayPoint(region.getPoints().get(i)); x[i] = p.getX(); y[i] = p.getY(); }
+            Color color = Color.web(region.getColor()); g.setFill(new Color(color.getRed(), color.getGreen(), color.getBlue(), .12));
+            g.fillPolygon(x, y, count); g.setStroke(color); g.setLineWidth(region.getName().equals(highlighted) ? 3 : 1.5); g.strokePolygon(x, y, count);
+            g.setFill(Color.BLACK); g.fillText(region.getName(), x[0] + 5, y[0] - 5); g.setFill(color); g.fillText(region.getName(), x[0] + 4, y[0] - 6);
+        }
+        g.setStroke(Color.WHITE); g.setFill(Color.WHITE); g.setLineWidth(2);
+        Point2D previous = null;
+        for (Point2D point : draft) {
+            Point2D p = overlayPoint(point); g.fillOval(p.getX() - 3, p.getY() - 3, 6, 6);
+            if (previous != null) g.strokeLine(previous.getX(), previous.getY(), p.getX(), p.getY()); previous = p;
+        }
+    }
 
     @Override public void close() {
         generation++; priming = false;
         if (pendingOpen != null) { pendingOpen.stop(); pendingOpen = null; }
         DirectPlayer previous = player; player = null;
-        view.setImage(null);
+        videoReady.set(false); view.setImage(null); view.setViewport(null); drawRegions();
         if (previous != null) previous.dispose();
         timeline.setDisable(true); timeline.setValue(0); playbackControls.setDisable(true);
         status.setText("Selecciona un video"); status.setVisible(true); clock.setText("00:00:00.000");

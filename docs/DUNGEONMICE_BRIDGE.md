@@ -66,9 +66,31 @@ example server on the same port.
 
 ## Behavior
 
+- The Java Regions panel now supports adding, drawing, naming, recoloring,
+  redrawing, editing and deleting polygons. Select **Agregar region**, click the
+  vertices on the paused video and choose **Guardar region**. At least three
+  vertices form a polygon; the undo control removes the last vertex. Save or
+  cancel the current draft before processing.
+- Regions are persisted per video in the existing encrypted database. Only
+  geometry and settings are stored, never video copies. Switching videos loads
+  that video's own regions. Color is a Java editor setting; Python retains its
+  original annotation colors. The overlap slider is passed as
+  `overlap_threshold` in the original Python format.
+- Coordinates use the original frame's pixel resolution, independent of window
+  resizing, zoom, pan or VLC buffer padding. Resolution changes, duplicate names,
+  crossed edges, out-of-bounds points and zero-area polygons are rejected. Java
+  requires two saved polygons before submitting the current CrossMaze analysis.
+- For CrossMaze's existing open/closed arm summary, use identifiers `este`,
+  `oeste`, `norte` and `sur` as appropriate. Custom identifiers work for individual
+  region metrics, but do not join the original open/closed arm classification.
+- Processing displays progress such as `300/927 frames` and the final output
+  generation phase. A full result is returned after analysis, not progressively
+  displayed frames. Python validates custom regions before accepting the video
+  upload and reports validation errors to Java instead of hiding the reason.
 - The HTTP contract is unchanged: POST metadata, PUT original video, receive result.
-- Empty Java regions use the operator-selected preset (CrossMaze_control_s1.json by
-  default). This is NOT automatic maze/geometry detection; select the correct
+- Empty regions from legacy manual clients use the operator-selected preset
+  (CrossMaze_control_s1.json by default); the new UI sends saved regions instead.
+  This is NOT automatic maze/geometry detection; select the correct
   preset and parameters for your experiment before relying on scientific results.
 - Supplied regions override the preset. Polygon points can be Java `{x,y}` objects
   or native `[x,y]` pairs; native CircleRegion/CircularFractionRegion objects pass
@@ -103,6 +125,11 @@ The existing `scripts/python_api_example.py` supplies the HTTP transport only.
 `scripts/check-python-autostart.ps1` verifies lifecycle and actual `App` startup
 against a disposable database. Its optional `-TestVideo` verifies shutdown
 during real analysis without retaining the result.
+`scripts/check-functional.ps1` includes drawing/editing, coordinate mapping and
+database reload checks. `scripts/check-dungeonmice-bridge.ps1 -CustomRegions`
+tests the real Python engine with regions created through Java controls on a
+CrossMaze clip, checks the returned region identifiers, and removes all test
+videos and results afterwards.
 
 Video encoding uses OpenCV's documented VideoWriter interface:
 https://docs.opencv.org/4.x/dd/d9e/classcv_1_1VideoWriter.html.

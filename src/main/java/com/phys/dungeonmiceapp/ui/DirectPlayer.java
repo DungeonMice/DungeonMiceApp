@@ -34,6 +34,7 @@ public final class DirectPlayer {
     private volatile boolean disposed;
     private volatile Status state = Status.UNKNOWN;
     private volatile long length, position;
+    private volatile int frameWidth, frameHeight;
     private volatile double volume = .5;
     private volatile boolean muted;
     private RuntimeException error;
@@ -43,7 +44,7 @@ public final class DirectPlayer {
     public DirectPlayer(File source, ImageView target) {
         this.source = source; this.target = target;
         surfaceView.imageProperty().addListener((obs, old, image) -> fx(() -> {
-            if (!disposed) { target.setImage(image); checkReady(); }
+            if (!disposed) { target.setImage(image); cropFrame(); checkReady(); }
         }));
         ticker = new Timeline(new KeyFrame(Duration.millis(100), e -> {
             if (!disposed) {
@@ -63,7 +64,12 @@ public final class DirectPlayer {
                 videoSurface = new ImageViewVideoSurface(surfaceView);
                 engine.videoSurface().set(videoSurface);
                 engine.events().addMediaPlayerEventListener(new MediaPlayerEventAdapter() {
-                    @Override public void playing(uk.co.caprica.vlcj.player.base.MediaPlayer player) { state = Status.PLAYING; }
+                    @Override public void playing(uk.co.caprica.vlcj.player.base.MediaPlayer player) {
+                        state = Status.PLAYING;
+                        java.util.List<uk.co.caprica.vlcj.media.VideoTrackInfo> tracks = player.media().info().videoTracks();
+                        if (!tracks.isEmpty()) { frameWidth = tracks.get(0).width(); frameHeight = tracks.get(0).height(); }
+                        fx(() -> { if (!disposed) { cropFrame(); checkReady(); } });
+                    }
                     @Override public void paused(uk.co.caprica.vlcj.player.base.MediaPlayer player) { state = Status.PAUSED; }
                     @Override public void stopped(uk.co.caprica.vlcj.player.base.MediaPlayer player) { if (!disposed) state = Status.STOPPED; }
                     @Override public void timeChanged(uk.co.caprica.vlcj.player.base.MediaPlayer player, long value) { position = value; }
@@ -81,8 +87,12 @@ public final class DirectPlayer {
     }
 
     private static void fx(Runnable action) { Platform.runLater(action); }
+    private void cropFrame() {
+        if (frameWidth > 0 && frameHeight > 0 && target.getImage() != null)
+            target.setViewport(new javafx.geometry.Rectangle2D(0, 0, frameWidth, frameHeight));
+    }
     private void checkReady() {
-        if (!ready && !disposed && error == null && target.getImage() != null && length > 0) {
+        if (!ready && !disposed && error == null && target.getImage() != null && length > 0 && frameWidth > 0 && frameHeight > 0) {
             ready = true; if (onReady != null) onReady.run();
         }
     }
@@ -108,8 +118,8 @@ public final class DirectPlayer {
     public void setOnEndOfMedia(Runnable action) { onEnd = action; }
     public VideoInfo getMedia() { return new VideoInfo(); }
     public final class VideoInfo {
-        public int getWidth() { return target.getImage() == null ? 0 : (int) target.getImage().getWidth(); }
-        public int getHeight() { return target.getImage() == null ? 0 : (int) target.getImage().getHeight(); }
+        public int getWidth() { return frameWidth; }
+        public int getHeight() { return frameHeight; }
         public String getSource() { return source.toURI().toString(); }
     }
     public void dispose() {

@@ -27,13 +27,14 @@ public final class DungeonMiceBridgeChecks extends Application {
             source = Paths.get(getParameters().getRaw().get(1));
             result = Paths.get(getParameters().getRaw().get(2));
             URI api = URI.create(getParameters().getRaw().get(0));
+            JsonArray regions = getParameters().getRaw().size() > 3 ? com.google.gson.JsonParser.parseString(Files.readString(Paths.get(getParameters().getRaw().get(3)))).getAsJsonArray() : new JsonArray();
             player = new PlaybackPane(false, System.out::println);
             Scene scene = new Scene(player, 1000, 740);
             scene.getStylesheets().add(App.class.getResource("/styles/workspace.css").toExternalForm());
             stage.setScene(scene); stage.show();
             Thread transfer = new Thread(() -> {
                 try {
-                    new PythonVideoClient(api).process(source, result, "bridge-video", "bridge-project", new JsonArray(), System.out::println);
+                    new PythonVideoClient(api).process(source, result, "bridge-video", "bridge-project", regions, System.out::println);
                     if (Arrays.equals(hash(source), hash(result))) throw new AssertionError("Python returned an echo rather than analysis");
                     Platform.runLater(() -> { player.open(result.toFile()); started = System.nanoTime(); awaitPlayback(); });
                 } catch (Throwable error) { Platform.runLater(() -> fail(error)); }

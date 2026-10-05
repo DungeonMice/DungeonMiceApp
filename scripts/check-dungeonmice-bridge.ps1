@@ -2,7 +2,8 @@ param(
     [string]$PythonPath = "$env:LOCALAPPDATA\DungeonMice\api-venv\Scripts\python.exe",
     [string]$PythonProject = 'F:\JavaApps\DungeonMice',
     [string]$VideoDirectory = 'C:\Users\Usuario\Downloads\CrossMaze',
-    [string]$JavaPath = 'C:\Program Files\Java\jdk-17\bin\java.exe'
+    [string]$JavaPath = 'C:\Program Files\Java\jdk-17\bin\java.exe',
+    [switch]$CustomRegions
 )
 $ErrorActionPreference = 'Stop'
 if (-not $PSBoundParameters.ContainsKey('PythonPath') -and -not (Test-Path -LiteralPath $PythonPath)) {
@@ -34,12 +35,20 @@ try {
     }
     if (-not $url) { throw 'Bridge startup timed out' }
     $fx = (Get-ChildItem -LiteralPath "$env:USERPROFILE\.m2\repository\org\openjfx" -Recurse -Filter '*17.0.10-win.jar').FullName -join ';'
-    & $JavaPath --module-path $fx --add-modules javafx.controls,javafx.fxml,javafx.media -cp 'target/classes;target/test-classes;target/runtime-libs/*' com.phys.dungeonmiceapp.DungeonMiceBridgeChecks $url (Join-Path $temporary 'crossmaze-35s.mp4') (Join-Path $temporary 'processed.mp4')
+    $regionArguments = @()
+    if ($CustomRegions) {
+        $regions = Join-Path $temporary 'regions.json'
+        & $JavaPath --module-path $fx --add-modules javafx.controls,javafx.fxml,javafx.media -cp 'target/classes;target/test-classes;target/runtime-libs/*' com.phys.dungeonmiceapp.RegionEditorChecks (Join-Path $temporary 'crossmaze-35s.mp4') $regions
+        if ($LASTEXITCODE -ne 0) { throw 'Real video region editor checks failed' }
+        $regionArguments += $regions
+    }
+    & $JavaPath --module-path $fx --add-modules javafx.controls,javafx.fxml,javafx.media -cp 'target/classes;target/test-classes;target/runtime-libs/*' com.phys.dungeonmiceapp.DungeonMiceBridgeChecks $url (Join-Path $temporary 'crossmaze-35s.mp4') (Join-Path $temporary 'processed.mp4') @regionArguments
     if ($LASTEXITCODE -ne 0) { throw 'Real processing/Java playback check failed' }
     $summaryLine = Get-Content -LiteralPath (Join-Path $temporary 'server.stdout.log') | Where-Object { $_ -like 'DungeonMice result:*' } | Select-Object -Last 1
     if (-not $summaryLine) { throw 'No real processing summary' }
     $summary = $summaryLine.Substring('DungeonMice result: '.Length) | ConvertFrom-Json
     if ($summary.frames -lt 500 -or $summary.trackingPoints -le 0 -or $summary.reports.Count -eq 0) { throw 'Tracking/report generation incomplete' }
+    if ($CustomRegions -and (($summary.regions.PSObject.Properties.Name -join ',') -ne 'norte-ui,sur-ui')) { throw 'Python did not use the UI regions' }
     Write-Output $summaryLine
     & $PythonPath -B -c 'import sys,cv2; from pathlib import Path; folder=Path(sys.argv[1]); source=cv2.VideoCapture(str(folder/"crossmaze-35s.mp4")); result=cv2.VideoCapture(str(folder/"processed.mp4")); ok,a=source.read(); ret,b=result.read(); assert ok and ret and a.shape==b.shape==(720,1280,3); assert int(source.get(cv2.CAP_PROP_FRAME_COUNT))==int(result.get(cv2.CAP_PROP_FRAME_COUNT)); source.release(); result.release(); print("PASS encoded dimensions and frame count preserved")' $temporary
     if ($LASTEXITCODE -ne 0) { throw 'Encoded video dimensions/frame count changed' }

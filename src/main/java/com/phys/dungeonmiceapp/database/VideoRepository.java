@@ -3,6 +3,7 @@ package com.phys.dungeonmiceapp.database;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.phys.dungeonmiceapp.model.Video;
+import com.phys.dungeonmiceapp.model.VideoRegion;
 import com.phys.dungeonmiceapp.session.SessionManager;
 
 import java.util.ArrayList;
@@ -69,6 +70,34 @@ public class VideoRepository {
         JsonObject filter = new JsonObject();
         filter.addProperty("ownerId", ownerId);
         return toVideoList(DatabaseManager.findByFilter(COLLECTION, filter));
+    }
+
+    public static List<VideoRegion> findRegions(String videoId) {
+        JsonObject video = ownedVideo(videoId);
+        List<VideoRegion> regions = new ArrayList<>();
+        if (video.has("regions")) for (com.google.gson.JsonElement item : video.getAsJsonArray("regions")) regions.add(VideoRegion.fromJson(item.getAsJsonObject()));
+        return regions;
+    }
+
+    public static void saveRegions(String videoId, List<VideoRegion> regions) {
+        JsonObject video = ownedVideo(videoId);
+        if (regions.size() > 32) throw new IllegalArgumentException("Maximo 32 regiones por video.");
+        Set<String> names = new HashSet<>(); JsonArray data = new JsonArray();
+        for (VideoRegion region : regions) {
+            if (!names.add(region.getName().toLowerCase(java.util.Locale.ROOT))) throw new IllegalArgumentException("Los nombres de las regiones deben ser diferentes.");
+            data.add(region.toJson());
+        }
+        com.google.gson.JsonElement previous = video.get("regions"); video.add("regions", data);
+        try { DatabaseManager.persist(); }
+        catch (RuntimeException ex) { if (previous == null) video.remove("regions"); else video.add("regions", previous); throw ex; }
+    }
+
+    private static JsonObject ownedVideo(String videoId) {
+        if (!SessionManager.isLoggedIn()) throw new IllegalArgumentException("Inicia sesion.");
+        JsonObject filter = new JsonObject(); filter.addProperty("_id", videoId); filter.addProperty("ownerId", SessionManager.getCurrentUser().getId());
+        JsonObject video = DatabaseManager.findOne(COLLECTION, filter);
+        if (video == null) throw new IllegalArgumentException("Video no disponible.");
+        return video;
     }
 
     // DELETE
