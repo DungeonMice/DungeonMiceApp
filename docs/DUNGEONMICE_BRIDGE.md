@@ -7,6 +7,39 @@ from that project, not copied or reimplemented.
 
 ## Start
 
+Run Java's `App` from IntelliJ or Maven. Java starts the real Python adapter in
+the background, chooses an available loopback port and connects the UI
+automatically. There is no separate terminal or URL to enter. Processing is
+disabled until the service reports ready; startup errors appear in the Python
+panel without preventing the rest of the application from opening.
+
+Closing Java cancels its transfers and shuts down only its own adapter and
+analysis workers, including when closing during startup. Other local services
+are not stopped. The shutdown endpoint requires a per-launch ownership token.
+
+The Python project defaults to the Java project's sibling `DungeonMice`. The
+existing isolated environment is discovered automatically, including Windows'
+Codex package cache redirect. Python and its existing `requirements.txt`, VLC
+and FFmpeg still need to be installed; this change does not bundle an installer.
+All adapters remain in the Java repository, not in the Python source tree.
+
+Optional IntelliJ VM options:
+
+```text
+-Ddungeonmice.python.project=F:\JavaApps\DungeonMice
+-Ddungeonmice.python.executable=C:\my-venv\Scripts\python.exe
+-Ddungeonmice.python.config=F:\JavaApps\DungeonMice\src\CrossMaze_control_s1.json
+```
+
+`DUNGEONMICE_PYTHON` can also select the interpreter. The application root is
+discovered from the working directory or class/JAR location; override it with
+`-Ddungeonmice.app.root=F:\JavaApps\DungeonMiceApp` when needed.
+
+Choose a video and **Procesar video**, then an external NEW `.mp4` destination.
+The output is always MP4, even when the original is MOV.
+
+## Optional Manual Server
+
 ```powershell
 & F:\JavaApps\DungeonMiceApp\scripts\start-dungeonmice-api.ps1
 ```
@@ -25,9 +58,11 @@ For a different environment or preset:
 & F:\JavaApps\DungeonMiceApp\scripts\start-dungeonmice-api.ps1 -PythonPath C:\my-venv\Scripts\python.exe -ConfigPath F:\JavaApps\DungeonMice\src\CrossMaze_control_s1.json
 ```
 
-The environment needs the existing Python app's `requirements.txt`. Do not run the
-old echo example server on the same port. In Java, run `App`, choose a video and
-**Procesar video**, then choose an external NEW destination ending in `.mp4`.
+For manual/external mode, set Java's VM option
+`-Ddungeonmice.python.url=http://127.0.0.1:8765`, or disable automatic startup with
+`-Ddungeonmice.python.autostart=false` and enter the URL in the interface. Java
+will not start or shut down that external service. Do not run the old echo
+example server on the same port.
 
 ## Behavior
 
@@ -64,6 +99,10 @@ old echo example server on the same port. In Java, run `App`, choose a video and
 `scripts/dungeonmice_api_bridge.py` is the real processing adapter.
 `scripts/start-dungeonmice-api.ps1` starts it with the selected environment/preset.
 The existing `scripts/python_api_example.py` supplies the HTTP transport only.
+`ManagedPythonBridge` owns automatic startup/shutdown from Java.
+`scripts/check-python-autostart.ps1` verifies lifecycle and actual `App` startup
+against a disposable database. Its optional `-TestVideo` verifies shutdown
+during real analysis without retaining the result.
 
 Video encoding uses OpenCV's documented VideoWriter interface:
 https://docs.opencv.org/4.x/dd/d9e/classcv_1_1VideoWriter.html.

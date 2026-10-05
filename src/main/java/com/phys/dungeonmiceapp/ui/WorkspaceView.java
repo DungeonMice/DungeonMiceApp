@@ -62,6 +62,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private boolean closed;
     private Task<java.nio.file.Path> apiTask;
     private final TextField pythonAddress = new TextField(System.getProperty("dungeonmice.python.url", "http://127.0.0.1:8765"));
+    private final javafx.beans.property.BooleanProperty pythonAvailable = new javafx.beans.property.SimpleBooleanProperty(true);
+    private final javafx.beans.property.StringProperty pythonStatus = new javafx.beans.property.SimpleStringProperty("");
     private final javafx.animation.PauseTransition directoryDelay = new javafx.animation.PauseTransition(javafx.util.Duration.millis(350));
     private ListView<File> projectFiles;
     private Label directoryMessage;
@@ -509,6 +511,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         VBox panel = sidePanel("Python");
         pythonAddress.setId("python-api-url");
         pythonAddress.setTooltip(new Tooltip("Direccion de la API local de Python"));
+        Label connection = new Label(); connection.textProperty().bind(pythonStatus); connection.setWrapText(true);
+        connection.setMaxWidth(Double.MAX_VALUE); connection.setId("python-connection-status");
         Label status = new Label(); status.setWrapText(true); status.setMaxWidth(Double.MAX_VALUE);
         javafx.beans.property.BooleanProperty busy = new javafx.beans.property.SimpleBooleanProperty(false);
         Button view = button("Ver resultado", "outline", () -> {}); view.setDisable(true);
@@ -517,7 +521,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             File source = MediaFiles.resolve(video.getFilePath());
             FileChooser chooser = new FileChooser(); chooser.setTitle("Guardar video de Python");
             String name = source.getName(); int dot = name.lastIndexOf('.');
-            chooser.setInitialFileName((dot < 0 ? name : name.substring(0, dot)) + "-procesado" + (dot < 0 ? ".mp4" : name.substring(dot)));
+            chooser.setInitialFileName((dot < 0 ? name : name.substring(0, dot)) + "-procesado.mp4");
             if (source.getParentFile() != null && source.getParentFile().isDirectory()) chooser.setInitialDirectory(source.getParentFile());
             File destination = chooser.showSaveDialog(stage); if (destination == null) return;
             try {
@@ -547,13 +551,17 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 files.submit(task);
             } catch (RuntimeException | IOException ex) { error(ex); }
         });
-        process.setId("python-process"); process.disableProperty().bind(choices.valueProperty().isNull().or(busy));
+        process.setId("python-process"); process.disableProperty().bind(choices.valueProperty().isNull().or(busy).or(pythonAvailable.not()));
         pythonAddress.disableProperty().bind(busy);
         Button cancel = button("Cancelar", "outline", this::cancelApi); cancel.disableProperty().bind(busy.not());
         view.setId("python-result");
         for (Button button : new Button[]{process, cancel, view}) button.setMaxWidth(Double.MAX_VALUE);
-        panel.getChildren().addAll(pythonAddress, process, cancel, view, status); return panel;
+        panel.getChildren().addAll(connection, pythonAddress, process, cancel, view, status); return panel;
     }
+
+    public void pythonConnecting() { pythonAvailable.set(false); pythonStatus.set("Conectando..."); pythonAddress.setEditable(false); }
+    public void pythonConnected(String url) { if (closed) return; pythonAddress.setText(url); pythonAvailable.set(true); pythonStatus.set("Conectado"); }
+    public void pythonUnavailable(String message) { if (closed) return; pythonAvailable.set(false); pythonStatus.set("Python no disponible"); pythonAddress.setTooltip(new Tooltip(message)); System.err.println("[Python] " + message); }
 
     private void cancelApi() { if (apiTask != null) { apiTask.cancel(true); apiTask = null; } }
 

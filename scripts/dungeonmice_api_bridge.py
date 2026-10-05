@@ -3,6 +3,7 @@ import argparse
 import copy
 import json
 import math
+import hmac
 import os
 from pathlib import Path
 import select
@@ -21,6 +22,7 @@ ACTIVE = threading.local()
 PROCESS_SLOT = threading.Lock()
 WORKERS = set()
 WORKER_LOCK = threading.Lock()
+STOPPING = threading.Event()
 OPTIONS = None
 
 
@@ -223,8 +225,24 @@ def process_video(source, metadata):
 
 
 class Handler(protocol.Handler):
+    def do_POST(self):
+        if self.path == "/api/v1/shutdown":
+            expected = os.environ.get("DUNGEONMICE_SHUTDOWN_TOKEN", "")
+            supplied = self.headers.get("X-DungeonMice-Token", "")
+            if not expected or not hmac.compare_digest(expected, supplied):
+                self.reply(403, {"error": "Forbidden"})
+                return
+            STOPPING.set()
+            self.reply(200, {"status": "stopping"})
+            threading.Thread(target=self.server.shutdown, name="dungeonmice-service-stop", daemon=True).start()
+            return
+        if STOPPING.is_set():
+            self.reply(503, {"error": "Service is stopping"})
+            return
+        super().do_POST()
+
     def do_PUT(self):
-        if not PROCESS_SLOT.acquire(blocking=False):
+        if STOPPING.is_set() or not PROCESS_SLOT.acquire(blocking=False):
             self.reply(503, {"error": "Another video is being processed; try again later"})
             return
         ACTIVE.connection = self.connection
@@ -264,6 +282,7 @@ def main():
     OPTIONS = args
     protocol.process_video = process_video
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server.daemon_threads = False
     print(f"DungeonMice API: http://127.0.0.1:{server.server_port}", flush=True)
     print(f"Fallback region preset: {args.config}", flush=True)
     try:
