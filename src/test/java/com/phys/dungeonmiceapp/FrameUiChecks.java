@@ -59,6 +59,11 @@ public final class FrameUiChecks extends Application {
                 fire("frame-pause"); delay(700, () -> {
                     double paused = player().progressProperty().get(); delay(500, () -> {
                         check(player().progressProperty().get() == paused, "Pausing main UI stops frame analysis requests");
+                        TabPane views = (TabPane) workspace.lookup("#frame-views");
+                        check(views.getTabs().size() == 3, "Three analysis views available in main player");
+                        javafx.scene.image.Image videoImage = image().getImage(); views.getSelectionModel().select(1);
+                        check(image().getImage() != null && image().getImage() != videoImage, "Detection tab switches rendered image without a new frame request"); snapshot("detection-1440x900.png");
+                        views.getSelectionModel().select(2); check(image().getImage() != null && player().progressProperty().get() == paused, "Trajectory tab keeps the same analysis frame and session"); snapshot("trajectory-1440x900.png");
                         fire("frame-previous"); delay(300, () -> {
                             check(player().progressProperty().get() == paused, "Previous frame uses cache without advancing analysis");
                             stage.setWidth(1000); stage.setHeight(740); delay(300, () -> {

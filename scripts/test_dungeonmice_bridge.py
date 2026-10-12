@@ -74,6 +74,26 @@ class BridgeChecks(unittest.TestCase):
         cv2.VideoWriter.return_value.release.assert_called_once()
         cv2.VideoCapture.return_value.release.assert_called_once()
 
+    def test_morris_geometry_validation(self):
+        from experiment_config import select_config, validate_frame_regions
+        region = dict(type="CircularFractionRegion", id="plataforma", center=[100, 100], radius=80,
+                      angle_start=270, fraction=.25, overlap_threshold=.75, frameWidth=300, frameHeight=220)
+        self.assertEqual(bridge.normalize_regions([region]), [region])
+        validate_frame_regions([region], 300, 220)
+        with self.assertRaises(ValueError):
+            bridge.normalize_regions([dict(region, radius=float("nan"))])
+        with self.assertRaises(ValueError):
+            bridge.normalize_regions([dict(region, fraction=.25, angle_end=360)])
+        with self.assertRaises(ValueError):
+            validate_frame_regions([dict(region, radius=150)], 300, 220)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "preset.json"
+            path.write_text(json.dumps(dict(labyrinth_type="MorrisPool")))
+            options = SimpleNamespace(config=path)
+            self.assertEqual(select_config(options, [region])["labyrinth_type"], "MorrisPool")
+            with self.assertRaisesRegex(ValueError, "90 grados"):
+                select_config(options, [dict(region, fraction=.5)])
+
     def test_disconnect_terminates_owned_worker(self):
         connection, peer = socket.socketpair()
         peer.close()

@@ -206,6 +206,11 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         if (player == null || !videoReady.get()) return;
         for (VideoRegion region : regionData) {
             if (region.getWidth() != player.getMedia().getWidth() || region.getHeight() != player.getMedia().getHeight()) continue;
+            if (region.isMorris()) {
+                Point2D center = overlayPoint(region.getCenter()), edge = overlayPoint(region.getCenter().add(region.getRadius(), 0)); double radius = edge.getX() - center.getX();
+                g.setStroke(Color.web(region.getColor(), .6)); g.setLineWidth(1); g.setLineDashes(5, 4); g.strokeOval(center.getX() - radius, center.getY() - radius, radius * 2, radius * 2); g.setLineDashes();
+                g.strokeLine(center.getX() - 4, center.getY(), center.getX() + 4, center.getY()); g.strokeLine(center.getX(), center.getY() - 4, center.getX(), center.getY() + 4);
+            }
             int count = region.getPoints().size(); double[] x = new double[count], y = new double[count];
             for (int i = 0; i < count; i++) { Point2D p = overlayPoint(region.getPoints().get(i)); x[i] = p.getX(); y[i] = p.getY(); }
             Color color = Color.web(region.getColor()); g.setFill(new Color(color.getRed(), color.getGreen(), color.getBlue(), .12));

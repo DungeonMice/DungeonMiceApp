@@ -616,7 +616,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 Map<String, JsonArray> snapshots = new HashMap<>();
                 for (Video original : originals) {
                     JsonArray payload = new JsonArray(); for (VideoRegion region : VideoRepository.findRegions(original.getId())) payload.add(region.toJson());
-                    if (payload.size() < 2) throw new IllegalArgumentException(original.getTitle() + ": guarda al menos dos regiones. Puedes usar Aplicar a todos.");
+                    try { VideoRegion.analysisType(payload); }
+                    catch (IllegalArgumentException ex) { throw new IllegalArgumentException(original.getTitle() + ": " + ex.getMessage()); }
                     snapshots.put(original.getId(), payload);
                 }
                 DirectoryChooser chooser = new DirectoryChooser(); chooser.setTitle("Carpeta para los videos procesados");

@@ -6,6 +6,7 @@ import java.io.ByteArrayInputStream;
 import java.nio.file.Path;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
+import java.util.*;
 import javafx.application.Platform;
 import javafx.geometry.*;
 import javafx.scene.control.*;
@@ -26,6 +27,8 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
     private final ProgressIndicator loading = new ProgressIndicator();
     private final HBox controls = new HBox(6);
     private final StackPane viewport = new StackPane(image, loading, status);
+    private final TabPane viewTabs = new TabPane();
+    private Map<String, Image> currentViews = Collections.emptyMap();
     private final javafx.beans.property.DoubleProperty progress = new javafx.beans.property.SimpleDoubleProperty(0);
     private volatile boolean closed;
     private boolean playing, pending, ready;
@@ -58,7 +61,14 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
             button("\u25b6", "frame-play", "Reproducir analisis", this::play),
             button("\u2161", "frame-pause", "Pausar analisis", this::pause),
             button("\u25b6|", "frame-next", "Frame siguiente", this::next));
-        clock.getStyleClass().add("timecode"); getChildren().addAll(viewport, clock, timeline, controls);
+        viewTabs.setId("frame-views"); viewTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE); viewTabs.getStyleClass().add("inspector-tabs");
+        String[] keys = {"video", "detection", "trajectory"}, titles = {"Video", "Deteccion", "Trayectoria"};
+        for (int i = 0; i < keys.length; i++) { Tab tab = new Tab(titles[i]); tab.setId("frame-view-" + keys[i]); tab.setUserData(keys[i]); viewTabs.getTabs().add(tab); }
+        viewTabs.setMinHeight(44); viewTabs.setPrefHeight(44); viewTabs.setMaxHeight(44);
+        viewTabs.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> {
+            if (selected != null) { image.setImage(currentViews.get(selected.getUserData().toString())); setZoom(1); }
+        });
+        clock.getStyleClass().add("timecode"); getChildren().addAll(viewTabs, viewport, clock, timeline, controls);
         request = worker.submit(() -> {
             try {
                 JsonObject info = client.open(source, regions);
@@ -82,8 +92,10 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         request = worker.submit(() -> {
             try {
                 PythonFrameClient.Frame frame = client.frame(index);
-                Image decoded = frame == null ? null : new Image(new ByteArrayInputStream(frame.image));
-                if (decoded != null && decoded.isError()) throw new IllegalArgumentException("Imagen recibida invalida");
+                Map<String, Image> decoded = new LinkedHashMap<>();
+                if (frame != null) for (Map.Entry<String, byte[]> entry : frame.views.entrySet()) {
+                    Image view = new Image(new ByteArrayInputStream(entry.getValue())); if (view.isError()) throw new IllegalArgumentException("Imagen recibida invalida"); decoded.put(entry.getKey(), view);
+                }
                 Platform.runLater(() -> {
                     if (closed) return;
                     pending = false; loading.setVisible(false);
@@ -93,8 +105,12 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
                     progress.set((double) processed / total);
                     // Server exposes its exact byte/count-limited cache floor in each packet.
                     firstCached = frame.metadata.has("firstCached") ? frame.metadata.get("firstCached").getAsInt() : Math.max(1, processed - 119);
-                    image.setImage(decoded); status.setVisible(false); timeline.setDisable(false); timeline.setMin(firstCached); timeline.setMax(Math.max(firstCached, processed)); timeline.setValue(shown);
-                    clock.setText(PlaybackPane.format(Duration.seconds(frame.metadata.get("time").getAsDouble())) + "  |  Frame " + shown + "/" + total + "  |  Cache " + firstCached + "-" + processed);
+                    currentViews = decoded;
+                    for (Tab tab : viewTabs.getTabs()) tab.setDisable(!decoded.containsKey(tab.getUserData().toString()));
+                    if (!decoded.containsKey(viewTabs.getSelectionModel().getSelectedItem().getUserData().toString())) viewTabs.getSelectionModel().select(0);
+                    image.setImage(decoded.get(viewTabs.getSelectionModel().getSelectedItem().getUserData().toString())); status.setVisible(false); timeline.setDisable(false); timeline.setMin(firstCached); timeline.setMax(Math.max(firstCached, processed)); timeline.setValue(shown);
+                    clock.setText(PlaybackPane.format(Duration.seconds(frame.metadata.get("time").getAsDouble())) + "  |  Frame " + shown + "/" + total + "  |  Cache " + firstCached + "-" + processed
+                            + (frame.metadata.get("recordingActive").getAsBoolean() ? "" : "  |  Calentamiento"));
                     JsonObject states = frame.metadata.getAsJsonObject("regions");
                     if (index < 0) {
                         for (String name : states.keySet()) {
@@ -128,7 +144,7 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
     }
     @Override public void close() {
         if (closed) return; closed = true; playing = false;
-        if (request != null) request.cancel(true); worker.shutdownNow(); image.setImage(null);
+        if (request != null) request.cancel(true); worker.shutdownNow(); image.setImage(null); currentViews = Collections.emptyMap();
         Thread cleanup = new Thread(client::close, "dungeonmice-frame-close"); cleanup.setDaemon(true); cleanup.start();
     }
 }

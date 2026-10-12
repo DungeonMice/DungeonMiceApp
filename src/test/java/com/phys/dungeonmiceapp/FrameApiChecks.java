@@ -40,6 +40,8 @@ public final class FrameApiChecks {
                 java.awt.image.BufferedImage image = ImageIO.read(new ByteArrayInputStream(first.image));
                 check(image != null && image.getWidth() == open.get("width").getAsInt() && image.getHeight() == open.get("height").getAsInt(), "Rendered frame decodes at original dimensions");
                 check(first.metadata.getAsJsonObject("regions").size() == regions.size(), "Region state accompanies the image");
+                check(first.views.keySet().equals(new HashSet<>(Arrays.asList("video", "detection", "trajectory"))), "Video, detection and trajectory travel in one synchronized frame packet");
+                for (byte[] bytes : first.views.values()) { java.awt.image.BufferedImage view = ImageIO.read(new ByteArrayInputStream(bytes)); check(view != null && view.getWidth() == image.getWidth() && view.getHeight() == image.getHeight(), "Auxiliary view decodes at source resolution"); }
                 Thread.sleep(300); check(info(uri, id, bridge.frameToken()).get("processed").getAsInt() == 1, "Pausing leaves analysis suspended");
                 check(Arrays.equals(first.image, client.frame(1).image), "Cached frame is returned without reanalysis");
                 int count = Math.min((int) (open.get("fps").getAsDouble() * 26) + 1, open.get("total").getAsInt());
@@ -60,6 +62,13 @@ public final class FrameApiChecks {
                 check(HttpClient.newHttpClient().send(forbidden, HttpResponse.BodyHandlers.discarding()).statusCode() == 403, "Local path API rejects requests without the application token");
             }
             try (PythonFrameClient another = new PythonFrameClient(uri, bridge.frameToken())) { check(another.open(source, regions).get("processed").getAsInt() == 0, "Closing releases slot for another video"); }
+            java.awt.image.BufferedImage shapeImage;
+            try (PythonFrameClient dimensions = new PythonFrameClient(uri, bridge.frameToken())) { dimensions.open(source, regions); shapeImage = ImageIO.read(new ByteArrayInputStream(dimensions.frame(-1).image)); }
+            JsonArray pool = new JsonArray(); pool.add(com.phys.dungeonmiceapp.model.VideoRegion.morris("plataforma", "#00874b", new javafx.geometry.Point2D(shapeImage.getWidth() / 2.0, shapeImage.getHeight() / 2.0), Math.min(shapeImage.getWidth(), shapeImage.getHeight()) / 4.0, 270, .75, shapeImage.getWidth(), shapeImage.getHeight()).toJson());
+            try (PythonFrameClient morris = new PythonFrameClient(uri, bridge.frameToken())) {
+                check(morris.open(source, pool).get("experiment").getAsString().equals("MorrisPool"), "Morris quadrant selects native Morris engine instead of CrossMaze");
+                PythonFrameClient.Frame frame = morris.frame(-1); check(frame.views.size() == 3 && frame.metadata.getAsJsonObject("regions").size() == 1, "Native Morris session renders all views with one region");
+            }
             check(Arrays.equals(before, hash(source)), "Original video remains unchanged");
         } finally { bridge.close(); }
         check(!ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false), "Owned Python service shuts down");

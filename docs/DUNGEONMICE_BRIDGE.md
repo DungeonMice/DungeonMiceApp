@@ -128,7 +128,7 @@ example server on the same port.
 
 ## Project-wide regions and batch processing
 
-In Video > Regiones, **Aplicar a todos** copies the saved polygons of the current
+In Video > Regiones, **Aplicar a todos** copies the saved regions of the current
 video into the other videos in the selected project. By default existing regions
 are kept, preserving individual exceptions. Selecting **Reemplazar tambien las
 regiones existentes** explicitly replaces them. Copies are independent and can
@@ -137,8 +137,8 @@ Coordinates remain in original pixels: templates require the same resolution
 and framing. The Python adapter rejects incompatible dimensions; it never
 silently scales polygons or analyzes with mismatched coordinates.
 
-**Procesar todos** takes a snapshot of every video's own saved regions (at least
-two per video) and asks once for an external output directory. Videos are sent
+**Procesar todos** takes a snapshot of every video's own valid saved regions
+(two or more CrossMaze polygons, or one Morris quadrant) and asks once for an external output directory. Videos are sent
 sequentially to the same Python API. Existing results are not overwritten;
 duplicate basenames receive numeric suffixes. Each completed result is immediately
 indexed in **Procesados**, including the regions used for that run. Failure of
@@ -160,7 +160,7 @@ frames without reanalysis; zoom and pan work in the frame viewport. Region
 entry/exit transitions are appended to the original video's activity log.
 
 No video is uploaded or encoded to MP4 in this mode: the local service opens the
-original path and returns one JPEG-rendered frame plus index, timestamp, position
+original path and returns the JPEG-rendered views of one frame plus index, timestamp, position
 and region-state metadata per request. There is no audio in frame analysis.
 The adapter clears the engine's otherwise unbounded full-frame `_cache` after
 each `next()` while leaving the tracker/event state intact. It keeps at most
@@ -195,7 +195,49 @@ warmup, rendered pixels, region metadata, cache eviction, pause, authentication,
 shutdown and main-UI navigation, including compact/large screenshots. It leaves
 the original video and Python source untouched and uses a disposable database.
 
-## Adapter files
+## Morris Regions and Synchronized Views
+
+In Video > Regiones choose **Cuadrante (Morris)**, then Agregar. Mark the pool
+center and a point on its edge; the editor previews the pool outline and target
+quarter. Centro X/Y, Radio and Angulo allow precise adjustments; the quadrant
+menu sets the four cardinal quarters. Morris requires one region and replacing
+existing regions is confirmed explicitly. Existing per-video edit, delete,
+apply-to-project, region snapshots and batch export remain available.
+The stored/API geometry is native `CircularFractionRegion` with `fraction: 0.25`,
+not a polygon approximation. Only the Java preview uses a sampled arc. Geometry
+must fit the original image; invalid radii, dimensions and angular spans are
+rejected. CrossMaze polygon data remains backward compatible.
+
+The adapter chooses MorrisPool for one 90-degree sector, and CrossMaze for two
+or more polygons, in both frame and MP4 processing. When the running service's
+preset is for another experiment it loads the matching original preset
+(`MorrisPool_escopolamina_s1.json` or `CrossMaze_control_s1.json`). This is preset
+selection, not automatic pool detection; treatment/tracker/warmup defaults come
+from that preset and must be reviewed for scientific use. A custom preset of the
+matching type is retained. No source or configuration file in Python is edited.
+
+The live frame player has **Video / Deteccion / Trayectoria** tabs. The original
+frame engine discards the return value of `draw_trajectory_on_mask`; the external
+adapter wraps that visualizer instance method to retain its native output and
+a raw-mask copy. Native tracking and region calculations are not changed.
+All views of a frame are JPEG-encoded into one packet and one cache entry, with
+`images: [{id, offset, length}]` metadata followed by concatenated image bytes.
+Java validates descriptors and decodes views in the background. Tab changes
+select already received images, without another request, advancing analysis or
+restarting the session. Cached backward navigation restores all views for that
+same frame. The 120-entry / 32-MiB limit applies to the combined views.
+The trajectory may be empty during warmup or before tracking starts; the timecode
+marks warmup. View tabs are inside the live player; leaving the Video workspace
+still closes the ephemeral analysis session.
+
+Tests cover two-click Morris creation, native geometry persistence/editing,
+per-video independence, project-wide region copies, one-region batch validation,
+native Morris engine selection, synchronized view packets, and view changes in
+the main Java UI with a paused tracker. CrossMaze is tested using its actual
+recording; native Morris routing is additionally tested with a circular test ROI
+on that recording, not used as a scientific Morris experiment.
+
+## Existing Adapter Files
 
 `scripts/dungeonmice_api_bridge.py` is the real processing adapter.
 `scripts/start-dungeonmice-api.ps1` starts it with the selected environment/preset.

@@ -114,6 +114,25 @@ public final class RegionEditorChecks extends Application {
         java.awt.image.BufferedImage image = new java.awt.image.BufferedImage((int) snapshot.getWidth(), (int) snapshot.getHeight(), java.awt.image.BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < image.getHeight(); y++) for (int x = 0; x < image.getWidth(); x++) image.setRGB(x, y, snapshot.getPixelReader().getArgb(x, y));
         javax.imageio.ImageIO.write(image, "png", screenshot.toFile());
+        editor.setVideo(other);
+        @SuppressWarnings("unchecked") ComboBox<String> shape = (ComboBox<String>) scene.lookup("#region-shape"); shape.getSelectionModel().select(1); add.fire();
+        Point2D center = new Point2D(width / 2.0, height / 2.0); double radius = Math.min(width, height) / 4.0;
+        click(center); click(center.add(radius, 0));
+        ((TextField) scene.lookup("#region-name")).setText("plataforma"); ((Button) scene.lookup("#region-save")).fire();
+        JsonArray pool = editor.requestRegions(); JsonObject nativePool = pool.get(0).getAsJsonObject();
+        check(pool.size() == 1 && nativePool.get("type").getAsString().equals("CircularFractionRegion") && !nativePool.has("points"), "Two clicks create one native Morris quadrant without polygon approximation in API");
+        check(Math.abs(nativePool.get("radius").getAsDouble() - radius) < .01 && nativePool.get("fraction").getAsDouble() == .25, "Pool radius and 90-degree sector use source pixels");
+        check(VideoRegion.analysisType(pool).equals("MorrisPool"), "One Morris region passes analysis validation");
+        DatabaseManager.connect(); editor.setVideo(other); check(editor.requestRegions().equals(pool), "Morris geometry survives database reload");
+        list.getSelectionModel().select(0); ((Button) scene.lookup("#region-edit")).fire();
+        @SuppressWarnings("unchecked") ComboBox<String> quadrant = (ComboBox<String>) scene.lookup("#pool-quadrant"); quadrant.getSelectionModel().select(1);
+        scene.getRoot().applyCss(); scene.getRoot().layout();
+        javafx.scene.image.WritableImage poolShot = scene.getRoot().snapshot(null, null); java.awt.image.BufferedImage poolImage = new java.awt.image.BufferedImage((int) poolShot.getWidth(), (int) poolShot.getHeight(), java.awt.image.BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < poolImage.getHeight(); y++) for (int x = 0; x < poolImage.getWidth(); x++) poolImage.setRGB(x, y, poolShot.getPixelReader().getArgb(x, y));
+        javax.imageio.ImageIO.write(poolImage, "png", Paths.get("target/ui-snapshots/morris-editor.png").toFile());
+        ((Button) scene.lookup("#region-save")).fire(); check(editor.requestRegions().get(0).getAsJsonObject().get("angle_start").getAsDouble() == 90, "Quadrant can be changed independently per video");
+        check(VideoRepository.findRegions(video.getId()).size() == 2, "Morris edits leave other video's CrossMaze polygons intact");
+        rejected(() -> VideoRegion.morris("bad", "#00874b", new Point2D(0, 0), 20, 0, .8, width, height), "Pool extending outside frame rejected");
         player.close(); Platform.exit();
     }
 

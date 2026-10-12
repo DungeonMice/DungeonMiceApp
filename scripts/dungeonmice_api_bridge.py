@@ -19,6 +19,7 @@ from http.server import ThreadingHTTPServer
 sys.dont_write_bytecode = True
 import python_api_example as protocol
 import frame_sessions
+from experiment_config import select_config, validate_frame_regions
 
 ACTIVE = threading.local()
 PROCESS_SLOT = threading.Lock()
@@ -64,6 +65,19 @@ def normalize_regions(regions):
             area = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(pairs, pairs[1:] + pairs[:1]))
             if abs(area) < 2:
                 raise ValueError("La region no tiene area suficiente.")
+        elif region["type"] in {"CircleRegion", "CircularFractionRegion"}:
+            center = region.get("center")
+            radius = region.get("radius")
+            if not isinstance(center, (list, tuple)) or len(center) != 2 or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0 for v in center):
+                raise ValueError("Centro de piscina invalido.")
+            if isinstance(radius, bool) or not isinstance(radius, (float, int)) or not math.isfinite(radius) or radius <= 0:
+                raise ValueError("Radio invalido.")
+            if region["type"] == "CircularFractionRegion":
+                for key in ("angle_start", "angle_end", "fraction"):
+                    if key in region and (isinstance(region[key], bool) or not isinstance(region[key], (float, int)) or not math.isfinite(region[key])):
+                        raise ValueError("Angulo o fraccion invalidos.")
+                if ("fraction" in region) == ("angle_end" in region) or ("fraction" in region and not 0 < region["fraction"] <= 1):
+                    raise ValueError("Define exactamente angle_end o fraction.")
     return result
 
 
@@ -71,9 +85,7 @@ def validate_metadata(metadata):
     if not metadata["regions"]:
         return  # Preserve the legacy manual client's explicit preset fallback.
     regions = normalize_regions(metadata["regions"])
-    preset = json.loads(OPTIONS.config.read_text(encoding="utf-8"))
-    if preset["labyrinth_type"] == "CrossMaze" and (len(regions) < 2 or any(r["type"] != "PolygonRegion" for r in regions)):
-        raise ValueError("CrossMaze requiere al menos dos regiones poligonales guardadas.")
+    select_config(OPTIONS, regions)
     metadata["regions"] = regions
 
 
@@ -148,7 +160,9 @@ def run_worker(request_path):
     from input_loader import load_experiment
 
     metadata = request["metadata"]
-    config = json.loads(Path(request["config"]).read_text(encoding="utf-8"))
+    from types import SimpleNamespace
+    worker_options = SimpleNamespace(config=Path(request["config"]), python_project=Path(request["project"]))
+    config = select_config(worker_options, normalize_regions(metadata["regions"]) if metadata.get("regions") else [])
     if metadata.get("regions"):
         config["regions"] = normalize_regions(metadata["regions"])
     else:
@@ -161,11 +175,7 @@ def run_worker(request_path):
             width, height = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
             if not capture.isOpened() or width <= 0 or height <= 0:
                 raise ValueError("No se pudo leer la resolucion del video.")
-            for region in config["regions"]:
-                if region.get("frameWidth", width) != width or region.get("frameHeight", height) != height:
-                    raise ValueError("La resolucion cambio. Vuelve a dibujar las regiones.")
-                if region["type"] == "PolygonRegion" and any(x >= width or y >= height for x, y in region["points"]):
-                    raise ValueError("Hay vertices fuera del video.")
+            validate_frame_regions(config["regions"], width, height)
         finally:
             capture.release()
     config["video_path"] = str(source)

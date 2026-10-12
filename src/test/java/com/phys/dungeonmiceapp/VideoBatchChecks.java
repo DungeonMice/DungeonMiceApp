@@ -76,6 +76,12 @@ public final class VideoBatchChecks {
             catch (InterruptedException expected) { check(started.get() == 1, "Cancellation stops before the next video"); }
             check(ProcessedVideoRepository.findByProject(project.getId()).size() == 2, "Cancellation preserves completed results");
             check(VideoRepository.applyRegionsToGroup(project.getId(), videos.get(0).getId(), true) == 2 && payload(videos.get(2)).equals(payload(videos.get(0))), "Explicit replacement applies template to all videos");
+            VideoRepository.saveRegions(videos.get(0).getId(), Collections.singletonList(VideoRegion.morris("plataforma", "#00874b", new Point2D(320, 180), 100, 270, .75, 640, 360)));
+            check(VideoRepository.applyRegionsToGroup(project.getId(), videos.get(0).getId(), true) == 2 && VideoRepository.findRegions(videos.get(2).getId()).get(0).isMorris(), "Apply to all preserves native Morris quadrants");
+            Map<String, JsonArray> pools = new HashMap<>(); for (Video video : videos) pools.put(video.getId(), payload(video));
+            check(VideoBatch.plan(videos, pools, output, application).size() == 3, "Morris batch accepts exactly one quadrant per video");
+            VideoRepository.saveRegions(videos.get(1).getId(), Collections.singletonList(VideoRegion.morris("especial", "#00874b", new Point2D(320, 180), 90, 90, .75, 640, 360)));
+            check(VideoRepository.findRegions(videos.get(0).getId()).get(0).getAngle() == 270, "Morris batch copies remain individually editable");
             for (java.io.File source : sources) check(Arrays.equals(Files.readAllBytes(source.toPath()), new byte[]{1, 2, 3}), "Original external video unchanged");
             check(!Files.exists(application.resolve("videos")), "No videos copied into the application");
         } finally {

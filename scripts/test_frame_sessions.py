@@ -100,6 +100,19 @@ class FrameSessionChecks(unittest.TestCase):
         self.assertFalse(session.cache)
         slot.release.assert_called_once()
 
+    def test_views_share_index_and_cache_entry(self):
+        import json
+        session = self.session()
+        session.views = {"detection": object(), "trajectory": object()}
+        packet = session.next()
+        length = struct.unpack(">I", packet[:4])[0]
+        metadata = json.loads(packet[4:4 + length])
+        self.assertEqual(metadata["index"], 1)
+        self.assertEqual([view["id"] for view in metadata["images"]], ["video", "detection", "trajectory"])
+        self.assertEqual(sum(view["length"] for view in metadata["images"]), len(packet) - 4 - length)
+        self.assertEqual(len(session.cache), 1)
+        self.assertEqual(session.analyzer.next.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+from experiment_config import select_config, validate_frame_regions
 
 LOCK = threading.RLock()
 SESSION = None
@@ -33,22 +34,19 @@ class Session:
         if not source.is_file() or source.suffix.lower() not in {".mp4", ".mov", ".avi", ".mkv", ".m4v"}:
             raise ValueError("Video original no disponible")
         regions = normalize(request["regions"])
-        if len(regions) < 2:
-            raise ValueError("Guarda al menos dos regiones")
+        if not regions:
+            raise ValueError("Guarda las regiones antes de analizar")
         capture = cv2.VideoCapture(str(source))
         try:
             self.width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
             self.height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
             if not capture.isOpened() or self.width <= 0 or self.height <= 0:
                 raise ValueError("No se pudo abrir el video original")
-            for region in regions:
-                if region.get("frameWidth") != self.width or region.get("frameHeight") != self.height:
-                    raise ValueError("La resolucion cambio. Vuelve a dibujar las regiones")
-                if any(x >= self.width or y >= self.height for x, y in region["points"]):
-                    raise ValueError("Vertices fuera del video")
+            validate_frame_regions(regions, self.width, self.height)
         finally:
             capture.release()
-        config = json.loads(options.config.read_text(encoding="utf-8"))
+        config = select_config(options, regions)
+        self.kind = config["labyrinth_type"]
         config.update(video_path=str(source), regions=regions)
         with tempfile.TemporaryDirectory(prefix="dungeonmice-frame-config-") as temp:
             path = Path(temp) / "experiment.json"
@@ -59,11 +57,20 @@ class Session:
             self.analyzer.release()
             raise ValueError("FPS o duracion invalidos")
         self.cv2 = cv2
+        self.views = {}
+        original = self.analyzer._visualizer.draw_trajectory_on_mask
+        def capture_views(mask, *args, **kwargs):
+            self.views["detection"] = mask.copy()
+            rendered = original(mask, *args, **kwargs)
+            self.views["trajectory"] = rendered
+            return rendered
+        self.analyzer._visualizer.draw_trajectory_on_mask = capture_views
 
     def info(self):
         return dict(sessionId=self.id, width=self.width, height=self.height,
                     fps=self.analyzer.fps, total=self.analyzer.total_frames,
-                    processed=self.count, firstCached=next(iter(self.cache), 0), cachedBytes=self.bytes)
+                    processed=self.count, firstCached=next(iter(self.cache), 0), cachedBytes=self.bytes,
+                    experiment=self.kind, views=["video", "detection", "trajectory"])
 
     def next(self):
         data = self.analyzer.next()
@@ -72,15 +79,22 @@ class Session:
         # The pulled engine otherwise retains every full-resolution BGR image.
         # Keep tracker state intact, but own only a bounded compressed preview window.
         self.analyzer._cache.clear()
-        ok, encoded = self.cv2.imencode(".jpg", data.image, [self.cv2.IMWRITE_JPEG_QUALITY, 88])
-        if not ok:
-            raise ValueError("No se pudo codificar el frame")
+        images = dict(video=data.image, **getattr(self, "views", {}))
+        payload = bytearray()
+        descriptors = []
+        for name, image in images.items():
+            ok, encoded = self.cv2.imencode(".jpg", image, [self.cv2.IMWRITE_JPEG_QUALITY, 88])
+            if not ok:
+                raise ValueError("No se pudo codificar la vista " + name)
+            raw = encoded.tobytes()
+            descriptors.append(dict(id=name, offset=len(payload), length=len(raw)))
+            payload.extend(raw)
         states = {name: dict(inside=bool(state.inside), entries=int(state.entries),
                             totalTime=float(state.total_time)) for name, state in data.region_states.items()}
         position = None if data.position is None else [int(value) for value in data.position]
         header = json.dumps(dict(index=data.index, time=float(data.time), position=position,
-                                regions=states, recordingActive=bool(data.recording_active))).encode("utf-8")
-        packet = struct.pack(">I", len(header)) + header + encoded.tobytes()
+                                regions=states, recordingActive=bool(data.recording_active), images=descriptors)).encode("utf-8")
+        packet = struct.pack(">I", len(header)) + header + payload
         if len(packet) > MAX_BYTES:
             raise ValueError("Frame demasiado grande")
         self.count = data.index

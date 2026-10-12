@@ -7,14 +7,27 @@ import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.UUID;
+import java.util.*;
 
 /** One authenticated local session, one bounded image per request. */
 public final class PythonFrameClient implements AutoCloseable {
     public static final class Frame {
         public final JsonObject metadata;
         public final byte[] image;
-        public Frame(JsonObject metadata, byte[] image) { this.metadata = metadata; this.image = image; }
+        public final Map<String, byte[]> views;
+        public Frame(JsonObject metadata, byte[] payload) throws IOException {
+            this.metadata = metadata; Map<String, byte[]> images = new LinkedHashMap<>();
+            if (metadata.has("images")) {
+                int next = 0;
+                for (JsonElement item : metadata.getAsJsonArray("images")) {
+                    JsonObject descriptor = item.getAsJsonObject(); String id = descriptor.get("id").getAsString(); int offset = descriptor.get("offset").getAsInt(), length = descriptor.get("length").getAsInt();
+                    if (images.size() >= 3 || !Arrays.asList("video", "detection", "trajectory").contains(id) || images.containsKey(id) || offset != next || length <= 0 || (long) offset + length > payload.length) throw new IOException("Vista de frame invalida");
+                    images.put(id, Arrays.copyOfRange(payload, offset, offset + length)); next += length;
+                }
+                if (next != payload.length || !images.containsKey("video")) throw new IOException("Paquete de vistas incompleto");
+            } else images.put("video", payload);
+            views = Collections.unmodifiableMap(images); image = views.get("video");
+        }
     }
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final URI base;

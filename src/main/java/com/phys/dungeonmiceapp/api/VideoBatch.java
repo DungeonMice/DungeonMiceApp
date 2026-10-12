@@ -32,7 +32,8 @@ public final class VideoBatch {
         List<Item> items = new ArrayList<>(); Set<Path> reserved = new HashSet<>();
         for (Video video : videos) {
             JsonArray payload = regions.get(video.getId());
-            if (payload == null || payload.size() < 2) throw new IllegalArgumentException(video.getTitle() + ": guarda al menos dos regiones antes de procesar el lote.");
+            try { com.phys.dungeonmiceapp.model.VideoRegion.analysisType(payload); }
+            catch (IllegalArgumentException error) { throw new IllegalArgumentException(video.getTitle() + ": " + error.getMessage()); }
             Path source = MediaFiles.resolve(video.getFilePath()).toPath();
             String name = source.getFileName().toString(); int dot = name.lastIndexOf('.');
             String stem = dot < 0 ? name : name.substring(0, dot);

@@ -88,3 +88,4 @@
 .progress-bar > .bar { -fx-background-color: #414141; -fx-background-insets: 0; -fx-background-radius: 4; }
 .progress-bar > .track { -fx-background-color: #dedede; -fx-background-radius: 4; }
 .progress-indicator { -fx-progress-color: #b9b9b9; }
+#region-editor .spinner .text-field { -fx-padding: 6 4; -fx-font-size: 12px; }
