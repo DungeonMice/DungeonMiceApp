@@ -18,6 +18,7 @@ from http.server import ThreadingHTTPServer
 
 sys.dont_write_bytecode = True
 import python_api_example as protocol
+import frame_sessions
 
 ACTIVE = threading.local()
 PROCESS_SLOT = threading.Lock()
@@ -296,12 +297,16 @@ class Handler(protocol.Handler):
         super().reply(status, payload)
 
     def do_GET(self):
+        if frame_sessions.handle(self, OPTIONS, normalize_regions, PROCESS_SLOT, STOPPING):
+            return
         match = re.fullmatch(r"/api/v1/jobs/([a-f0-9]{32})/status", self.path)
         with PROGRESS_LOCK:
             message = PROGRESS.get(match.group(1)) if match else None
         self.reply(200, {"message": message}) if message else self.reply(404, {"error": "Unknown job"})
 
     def do_POST(self):
+        if frame_sessions.handle(self, OPTIONS, normalize_regions, PROCESS_SLOT, STOPPING):
+            return
         if self.path == "/api/v1/shutdown":
             expected = os.environ.get("DUNGEONMICE_SHUTDOWN_TOKEN", "")
             supplied = self.headers.get("X-DungeonMice-Token", "")
@@ -334,6 +339,10 @@ class Handler(protocol.Handler):
             ACTIVE.job = None
             PROCESS_SLOT.release()
 
+    def do_DELETE(self):
+        if not frame_sessions.handle(self, OPTIONS, normalize_regions, PROCESS_SLOT, STOPPING):
+            self.reply(404, {"error": "Unknown endpoint"})
+
 
 def main():
     global OPTIONS
@@ -362,6 +371,7 @@ def main():
         parser.error("FFmpeg must be available on PATH for MP4/AAC muxing")
     print(f"Dependencies: OpenCV {cv2.__version__}, NumPy {numpy.__version__}, openpyxl {openpyxl.__version__}", flush=True)
     OPTIONS = args
+    threading.Thread(target=frame_sessions.expire, args=(PROCESS_SLOT, STOPPING), daemon=True).start()
     protocol.process_video = process_video
     protocol.validate_metadata = validate_metadata
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
@@ -373,6 +383,8 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        STOPPING.set()
+        frame_sessions.close_all(PROCESS_SLOT)
         with WORKER_LOCK:
             remaining = list(WORKERS)
         for worker in remaining:

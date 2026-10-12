@@ -36,7 +36,7 @@ public final class DungeonMiceApplication extends Application {
                 && System.getProperty("dungeonmice.python.url") == null) {
             view.pythonConnecting();
             python = new com.phys.dungeonmiceapp.api.ManagedPythonBridge(message -> javafx.application.Platform.runLater(() -> view.pythonUnavailable(message)));
-            python.start().thenAccept(uri -> javafx.application.Platform.runLater(() -> view.pythonConnected(uri.toString())));
+            python.start().thenAccept(uri -> javafx.application.Platform.runLater(() -> view.pythonConnected(uri.toString(), python.frameToken())));
             if (getParameters().getRaw().contains("--python-startup-check")) {
                 python.start().thenAccept(uri -> javafx.application.Platform.runLater(() -> {
                     if (!python.isRunning()) throw new AssertionError("Python is not running");

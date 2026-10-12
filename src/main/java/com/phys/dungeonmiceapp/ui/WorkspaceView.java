@@ -64,6 +64,9 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private Rectangle2D restoreBounds;
     private boolean closed;
     private Task<?> apiTask;
+    private FramePlaybackPane framePlayer;
+    private Runnable restoreOriginal;
+    private String frameToken = System.getProperty("dungeonmice.python.token", "");
     private final javafx.beans.property.BooleanProperty processingBusy = new javafx.beans.property.SimpleBooleanProperty(false);
     private final TextField pythonAddress = new TextField(System.getProperty("dungeonmice.python.url", "http://127.0.0.1:8765"));
     private final javafx.beans.property.BooleanProperty pythonAvailable = new javafx.beans.property.SimpleBooleanProperty(true);
@@ -516,7 +519,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         load.disableProperty().bind(processingBusy);
         choices.setMinWidth(120); choices.setMaxWidth(300); choices.setPrefWidth(250);
         load.setMinWidth(0); load.setPrefWidth(145); remove.setMinWidth(0); remove.setPrefWidth(145);
-        HBox tools = new HBox(10, choices, load, remove, iconButton("zoom", "Acercar", () -> player.setZoom(2)), iconButton("reset", "Restablecer zoom", player::resetZoom));
+        HBox tools = new HBox(10, choices, load, remove, iconButton("zoom", "Acercar", () -> { if (framePlayer != null) framePlayer.setZoom(2); else player.setZoom(2); }), iconButton("reset", "Restablecer zoom", () -> { if (framePlayer != null) framePlayer.setZoom(1); else player.resetZoom(); }));
         tools.getStyleClass().add("mode-toolbar"); tools.setAlignment(Pos.CENTER_LEFT);
         VBox sidebar = new VBox(12, identity(), inspector, pythonPanel(choices, player, regions)); sidebar.setId("video-sidebar"); sidebar.setMinWidth(310); sidebar.setPrefWidth(310); sidebar.setMaxWidth(310); sidebar.setMinHeight(0); sidebar.setPadding(new Insets(12, 16, 16, 0)); VBox.setVgrow(inspector, Priority.ALWAYS);
         BorderPane page = new BorderPane(); page.setTop(tools); player.setPadding(new Insets(12, 16, 16, 16)); page.setCenter(player); page.setRight(sidebar); return page;
@@ -665,6 +668,24 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             } catch (IOException | RuntimeException ex) { error(ex); }
         });
         processAll.setId("python-process-all"); processAll.disableProperty().bind(process.disableProperty());
+        Button frames = button("Analizar por frames", "primary", () -> {
+            if (framePlayer != null) { cancelApi(); return; }
+            Video source = choices.getValue(); if (source == null || apiTask != null) return;
+            try {
+                JsonArray payload = regions.requestRegions();
+                com.phys.dungeonmiceapp.api.PythonFrameClient client = new com.phys.dungeonmiceapp.api.PythonFrameClient(java.net.URI.create(pythonAddress.getText().trim()), frameToken);
+                BorderPane page = (BorderPane) player.getParent();
+                cancelPreparation(player); player.close(); busy.set(true); status.setText("Analisis por frames activo");
+                regions.showAnalysisStatus();
+                restoreOriginal = () -> { progress.progressProperty().unbind(); page.setCenter(player); busy.set(false); status.setText(""); openVideo(player, MediaFiles.resolve(source.getFilePath()), false); };
+                framePlayer = new FramePlaybackPane(client, MediaFiles.resolve(source.getFilePath()).toPath(), payload,
+                        text -> logVideo(source, "00:00:00.000", text, text.startsWith("Error")));
+                page.setCenter(framePlayer);
+                progress.progressProperty().bind(framePlayer.progressProperty());
+            } catch (RuntimeException ex) { error(ex); }
+        });
+        frames.setId("python-frames"); frames.setMinWidth(0); frames.setMaxWidth(Double.MAX_VALUE);
+        frames.disableProperty().bind(choices.valueProperty().isNull().or(busy).or(pythonAvailable.not()));
         pythonAddress.disableProperty().bind(busy);
         choices.disableProperty().bind(busy);
         busy.addListener((obs, old, value) -> { processingBusy.set(value); regions.setLocked(value); });
@@ -675,14 +696,23 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         view.visibleProperty().bind(busy.not()); view.managedProperty().bind(busy.not());
         TitledPane advanced = new TitledPane("Conexion", pythonAddress); advanced.setExpanded(false); advanced.getStyleClass().add("connection-settings");
         HBox actions = new HBox(6, process, processAll); HBox.setHgrow(process, Priority.ALWAYS); HBox.setHgrow(processAll, Priority.ALWAYS);
-        panel.getChildren().addAll(connection, progress, status, actions, cancel, view, advanced); return panel;
+        panel.getChildren().addAll(connection, progress, status, frames, actions, cancel, view, advanced); return panel;
     }
 
     public void pythonConnecting() { pythonAvailable.set(false); pythonStatus.set("Conectando..."); pythonAddress.setEditable(false); }
     public void pythonConnected(String url) { if (closed) return; pythonAddress.setText(url); pythonAvailable.set(true); pythonStatus.set("Conectado"); }
+    public void pythonConnected(String url, String token) { frameToken = token; pythonConnected(url); }
     public void pythonUnavailable(String message) { if (closed) return; pythonAvailable.set(false); pythonStatus.set("Python no disponible"); pythonAddress.setTooltip(new Tooltip(message)); System.err.println("[Python] " + message); }
 
-    private void cancelApi() { if (apiTask != null) { apiTask.cancel(true); apiTask = null; } processingBusy.set(false); }
+    private void cancelApi() {
+        if (apiTask != null) { apiTask.cancel(true); apiTask = null; }
+        if (framePlayer != null) {
+            framePlayer.close(); framePlayer = null;
+            Runnable restore = restoreOriginal; restoreOriginal = null;
+            if (!closed && restore != null) restore.run();
+        }
+        processingBusy.set(false);
+    }
 
     private PlaybackPane newPlayer(boolean compact, Consumer<String> log) { PlaybackPane player = new PlaybackPane(compact, log); players.add(player); return player; }
     private VBox sidePanel(String title) { VBox box = new VBox(10, heading(title, false)); box.getStyleClass().add("side-panel"); box.setPadding(new Insets(10)); return box; }

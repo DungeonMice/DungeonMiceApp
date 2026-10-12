@@ -148,7 +148,54 @@ already completed results remain available. No original videos are moved or
 copied into either repository. `scripts/check-api.ps1` includes batch transport,
 failure, cancellation, ownership and independent-region persistence checks.
 
-## Connection files
+## On-demand frame analysis
+
+The Video workspace now offers **Analizar por frames** in addition to the
+existing MP4 export controls. It calls the pulled Python
+`src/RunExperiment_per_frame.py` / `VideoAnalyzer` without modifying that source.
+The first frame opens paused. Play requests frames sequentially, paced by source
+FPS when processing is fast enough. Pause stops requesting new frames (one
+already in flight may finish). Previous/next and the timeline revisit cached
+frames without reanalysis; zoom and pan work in the frame viewport. Region
+entry/exit transitions are appended to the original video's activity log.
+
+No video is uploaded or encoded to MP4 in this mode: the local service opens the
+original path and returns one JPEG-rendered frame plus index, timestamp, position
+and region-state metadata per request. There is no audio in frame analysis.
+The adapter clears the engine's otherwise unbounded full-frame `_cache` after
+each `next()` while leaving the tracker/event state intact. It keeps at most
+120 compressed frames and 32 MiB per session. The timeline reflects the exact
+available cache window; older frames are not silently reanalyzed. Engine
+`processed_count`/`get()` are not used by the adapter: its own absolute count
+and bounded cache define the API. Other engine configuration/scientific behavior
+is preserved, including the preset warmup. Sessions are ephemeral, not added to
+the persistent MP4 library in **Procesados**. That library/export workflow is
+still available through **Procesar video** / **Procesar todos**.
+
+Frame sessions hold the same single-analysis slot as MP4 jobs. Cancel, navigation
+and app shutdown close them; idle sessions expire after five minutes. The
+loopback API requires the privately generated application token in
+`X-DungeonMice-Token` before accepting a local path. Automatic Python startup
+shares this token with Java without logging it. For a manually started service,
+set matching `DUNGEONMICE_SHUTDOWN_TOKEN` and Java
+`-Ddungeonmice.python.token=...`; the ordinary MP4 endpoints remain compatible.
+
+Protocol: authenticated `POST /api/v1/frame-sessions` takes
+`{sessionId: <32 lowercase hex characters>, sourcePath, regions}` and returns
+dimensions/FPS/total frames. `GET /api/v1/frame-sessions/{id}/next` processes
+exactly one frame, or returns 204 at EOF. `GET .../{index}` returns a cached
+one-based frame, or 410 when evicted. Successful frames use content type
+`application/vnd.dungeonmice.frame`: four-byte big-endian metadata length,
+UTF-8 JSON metadata, then JPEG bytes. `GET .../{id}` returns session/cache
+statistics; `DELETE .../{id}` releases the capture and cache. Only one session
+can exist at a time. Request bodies and returned frames are bounded.
+
+Run `scripts/check-frames.ps1` against CrossMaze to check the real Python engine,
+warmup, rendered pixels, region metadata, cache eviction, pause, authentication,
+shutdown and main-UI navigation, including compact/large screenshots. It leaves
+the original video and Python source untouched and uses a disposable database.
+
+## Adapter files
 
 `scripts/dungeonmice_api_bridge.py` is the real processing adapter.
 `scripts/start-dungeonmice-api.ps1` starts it with the selected environment/preset.

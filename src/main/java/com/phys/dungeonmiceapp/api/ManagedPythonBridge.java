@@ -119,6 +119,7 @@ public final class ManagedPythonBridge implements AutoCloseable {
     }
 
     public boolean isRunning() { return !closed && endpoint != null && process != null && process.isAlive(); }
+    public String frameToken() { return shutdownToken; }
     public long pid() { return process == null ? -1 : process.pid(); }
 
     @Override public void close() {

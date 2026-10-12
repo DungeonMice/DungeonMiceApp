@@ -21,6 +21,7 @@ public final class RegionEditor extends VBox {
     private final ColorPicker color = new ColorPicker(Color.web("#00874b"));
     private final Slider threshold = new Slider(0, 100, 80);
     private final Label message = new Label();
+    private final Label frame = new Label();
     private final VBox form = new VBox(8);
     private final javafx.beans.property.BooleanProperty editing = new javafx.beans.property.SimpleBooleanProperty(false);
     private final javafx.beans.property.BooleanProperty locked = new javafx.beans.property.SimpleBooleanProperty(false);
@@ -78,7 +79,7 @@ public final class RegionEditor extends VBox {
         list.disableProperty().bind(editing.or(locked));
         list.visibleProperty().bind(editing.not()); list.managedProperty().bind(editing.not());
         message.setWrapText(true); message.setMaxWidth(Double.MAX_VALUE); message.getStyleClass().add("validation-message"); message.setId("region-message");
-        Label frame = new Label(); frame.setId("region-frame-status"); frame.getStyleClass().add("muted");
+        frame.setId("region-frame-status"); frame.getStyleClass().add("muted");
         player.videoReadyProperty().addListener((obs, old, ready) -> frame.setText(ready ? player.getPlayer().getMedia().getWidth() + " x " + player.getPlayer().getMedia().getHeight() + " px" : "Cargando video..."));
         getChildren().addAll(header, frame, tools, list, form, message);
         draft.addListener((ListChangeListener<Point2D>) change -> overlay());
@@ -132,6 +133,7 @@ public final class RegionEditor extends VBox {
 
     public void cancel() { editing.set(false); replacing = null; draft.clear(); player.setRegionClickHandler(null); message.setText(""); overlay(); }
     public void setLocked(boolean value) { locked.set(value); if (value) cancel(); }
+    public void showAnalysisStatus() { frame.setText("Regiones del analisis"); }
     public void setOnApplyAll(Runnable action) {
         Button apply = button("Aplicar a todos", "region-apply-all", action);
         apply.setMaxWidth(Double.MAX_VALUE);

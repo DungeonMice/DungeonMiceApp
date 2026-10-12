@@ -24,6 +24,13 @@ public final class PythonVideoClient {
 
     public PythonVideoClient(URI base, Duration timeout) {
         if (timeout.isNegative() || timeout.isZero()) throw new IllegalArgumentException("El timeout debe ser positivo.");
+        this.base = localEndpoint(base);
+        this.timeout = timeout;
+        http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))
+                .followRedirects(HttpClient.Redirect.NEVER).version(HttpClient.Version.HTTP_1_1).build();
+    }
+
+    static URI localEndpoint(URI base) {
         if (base.getHost() == null || base.getUserInfo() != null || base.getQuery() != null || base.getFragment() != null
                 || !("http".equals(base.getScheme()) || "https".equals(base.getScheme())))
             throw new IllegalArgumentException("La direccion de Python debe ser una URL HTTP o HTTPS.");
@@ -31,10 +38,7 @@ public final class PythonVideoClient {
         if (!("127.0.0.1".equals(base.getHost()) || "localhost".equalsIgnoreCase(base.getHost())
                 || "[::1]".equals(base.getHost()) || "::1".equals(base.getHost())))
             throw new IllegalArgumentException("La API de Python debe ejecutarse en este equipo (localhost).");
-        this.base = URI.create(base.toString().replaceAll("/+$", "") + "/");
-        this.timeout = timeout;
-        http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))
-                .followRedirects(HttpClient.Redirect.NEVER).version(HttpClient.Version.HTTP_1_1).build();
+        return URI.create(base.toString().replaceAll("/+$", "") + "/");
     }
 
     public Path process(Path source, Path destination, String videoId, String projectId,
