@@ -24,6 +24,7 @@ public final class FrameUiChecks extends Application {
     private Stage stage;
     private Path temporary;
     private Timeline waiting;
+    private int expectedWidth, expectedHeight;
     private void check(boolean value, String text) { if (!value) throw new AssertionError(text); System.out.println("PASS " + text); }
     @Override public void start(Stage stage) {
         this.stage = stage;
@@ -36,7 +37,7 @@ public final class FrameUiChecks extends Application {
             Video video = VideoRepository.findByGroup(group.getId()).get(0); List<VideoRegion> regions = new ArrayList<>();
             for (JsonElement item : JsonParser.parseString(Files.readString(Paths.get(getParameters().getRaw().get(1)))).getAsJsonArray()) {
                 JsonObject region = item.getAsJsonObject(); if (!region.has("color")) region.addProperty("color", "#00874b"); regions.add(VideoRegion.fromJson(region));
-            } VideoRepository.saveRegions(video.getId(), regions);
+            } VideoRepository.saveRegions(video.getId(), regions); expectedWidth = regions.get(0).getWidth(); expectedHeight = regions.get(0).getHeight();
             workspace = new WorkspaceView(stage); Scene scene = new Scene(workspace, 1440, 900); scene.getStylesheets().add(App.class.getResource("/styles/workspace.css").toExternalForm()); stage.setScene(scene); stage.show();
             ((TextField) workspace.lookup("#login-username")).setText("admin"); ((PasswordField) workspace.lookup("#login-password")).setText("admin123");
             for (Node node : workspace.lookupAll(".button")) if (node instanceof Button && ((Button) node).getText().equals("Iniciar sesi\u00f3n")) ((Button) node).fire();
@@ -52,10 +53,10 @@ public final class FrameUiChecks extends Application {
     private void openFrames() {
         fire("python-frames");
         await(() -> image() != null && image().getImage() != null, () -> {
-            check(image().getImage().getWidth() == 1280 && image().getImage().getHeight() == 720, "Python frame rendered at original dimensions in main UI");
+            check(image().getImage().getWidth() == expectedWidth && image().getImage().getHeight() == expectedHeight, "Python frame rendered at original dimensions in main UI");
             check(((Button) workspace.lookup("#python-process")).isDisabled() && ((Button) workspace.lookup("#region-add")).isDisabled(), "Conflicting processing and region edits locked during frame session");
             snapshot("frames-1440x900.png"); fire("frame-play");
-            await(() -> player().progressProperty().get() > 3.0 / 10000, () -> {
+            await(() -> ((Slider) workspace.lookup("#frame-seek")).getMax() >= 5, () -> {
                 fire("frame-pause"); delay(700, () -> {
                     double paused = player().progressProperty().get(); delay(500, () -> {
                         check(player().progressProperty().get() == paused, "Pausing main UI stops frame analysis requests");

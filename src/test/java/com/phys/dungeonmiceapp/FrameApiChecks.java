@@ -15,7 +15,7 @@ public final class FrameApiChecks {
     public static Path source(String argument) throws IOException {
         Path path = Paths.get(argument);
         if (!Files.isDirectory(path)) return path.toRealPath();
-        try (java.util.stream.Stream<Path> files = Files.list(path)) { return files.filter(Files::isRegularFile).filter(file -> file.toString().toLowerCase(Locale.ROOT).endsWith(".mov")).sorted().findFirst().orElseThrow(() -> new IOException("No MOV video")); }
+        try (java.util.stream.Stream<Path> files = Files.walk(path)) { return files.filter(Files::isRegularFile).filter(file -> file.toString().toLowerCase(Locale.ROOT).matches(".*\\.(mov|avi|mp4|mkv|m4v)$")).sorted().findFirst().orElseThrow(() -> new IOException("No supported video")); }
     }
     private static void check(boolean value, String message) { if (!value) throw new AssertionError(message); System.out.println("PASS " + message); }
     private static byte[] hash(Path source) throws Exception {
@@ -33,6 +33,7 @@ public final class FrameApiChecks {
             URI uri = bridge.start().get(30, TimeUnit.SECONDS); pid = bridge.pid();
             try (PythonFrameClient client = new PythonFrameClient(uri, bridge.frameToken())) {
                 JsonObject open = client.open(source, regions); String id = open.get("sessionId").getAsString();
+                check(open.get("experiment").getAsString().equals(com.phys.dungeonmiceapp.model.VideoRegion.analysisType(regions)), "Native engine matches selected experiment");
                 check(open.get("processed").getAsInt() == 0, "Opening a session does not analyze frames");
                 Thread.sleep(300); check(info(uri, id, bridge.frameToken()).get("processed").getAsInt() == 0, "No demand means no processing");
                 PythonFrameClient.Frame first = client.frame(-1);
@@ -46,12 +47,15 @@ public final class FrameApiChecks {
                 check(Arrays.equals(first.image, client.frame(1).image), "Cached frame is returned without reanalysis");
                 int count = Math.min((int) (open.get("fps").getAsDouble() * 26) + 1, open.get("total").getAsInt());
                 PythonFrameClient.Frame last = first;
+                int detections = 0;
                 for (int i = 2; i <= count; i++) {
                     last = client.frame(-1);
                     if (last.metadata.get("index").getAsInt() != i) throw new AssertionError("Skipped frame " + i);
+                    if (!last.metadata.get("position").isJsonNull()) detections++;
                     if (i % 100 == 0) System.out.println("PASS Sequential demand through frame " + i);
                 }
                 check(last.metadata.get("recordingActive").getAsBoolean(), "Native engine advances through warmup into region analysis");
+                check(detections > 0, "Tracker returns positions after warmup: " + detections);
                 JsonObject after = info(uri, id, bridge.frameToken());
                 check(after.get("processed").getAsInt() == count && after.get("cachedBytes").getAsLong() <= 32L * 1024 * 1024, "Cache remains byte bounded");
                 if (count > 120) {

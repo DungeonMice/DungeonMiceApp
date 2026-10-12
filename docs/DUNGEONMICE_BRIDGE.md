@@ -233,9 +233,19 @@ still closes the ephemeral analysis session.
 Tests cover two-click Morris creation, native geometry persistence/editing,
 per-video independence, project-wide region copies, one-region batch validation,
 native Morris engine selection, synchronized view packets, and view changes in
-the main Java UI with a paused tracker. CrossMaze is tested using its actual
-recording; native Morris routing is additionally tested with a circular test ROI
-on that recording, not used as a scientific Morris experiment.
+the main Java UI with a paused tracker. CrossMaze and MorrisPool have been checked
+with actual recordings. The Morris check uses the six 320x240 MJPEG AVI files
+under `Downloads/MorrisPool`, including their nested directories, verifies the
+first 26 seconds through warmup and tracked positions, decodes all three views,
+checks pause/cache/session cleanup and preserves the originals' SHA-256 hashes.
+The main UI and two-click region editor are also checked against a real Morris
+recording. These are integration checks, not validation of scientific metrics.
+
+Run `scripts/check-frames.ps1 -Experiment MorrisPool -VideoDirectory
+'C:\Users\Usuario\Downloads\MorrisPool' -AllVideos` to repeat this check. Without
+`-AllVideos` only the first supported video is checked. The harness supports
+MOV, AVI, MP4, MKV and M4V, recursively finds videos, and checks UI dimensions
+against the region metadata instead of assuming CrossMaze's 1280x720 frames.
 
 ## Existing Adapter Files
 
