@@ -31,7 +31,10 @@ public final class RegionEditor extends VBox {
     private final ComboBox<String> quadrant = new ComboBox<>();
     private final Spinner<Double> poolX = number("pool-x"), poolY = number("pool-y"), poolRadius = number("pool-radius");
     private final Spinner<Double> poolAngle = number("pool-angle");
-    private boolean updatingPool, awaitingEdge;
+    private boolean updatingPool, awaitingEdge, drawingPool;
+    private final javafx.beans.property.BooleanProperty poolDrawing = new javafx.beans.property.SimpleBooleanProperty(false);
+    private final Slider angleSlider = new Slider(0, 359, 270);
+    private double radiusDirection;
     private static Spinner<Double> number(String id) {
         Spinner<Double> spinner = new Spinner<>(new SpinnerValueFactory.DoubleSpinnerValueFactory(0, 100000, 0, 1)); spinner.setId(id); spinner.setEditable(true); spinner.setMinWidth(0); spinner.setMaxWidth(Double.MAX_VALUE);
         spinner.getValueFactory().setConverter(new javafx.util.StringConverter<Double>() {
@@ -67,7 +70,7 @@ public final class RegionEditor extends VBox {
         color.setId("region-color"); color.setMinWidth(70); color.setPrefWidth(90); color.setMaxWidth(90);
         threshold.setId("region-overlap"); threshold.setBlockIncrement(5);
         Label overlap = new Label(); overlap.textProperty().bind(threshold.valueProperty().asString("Solapamiento: %.0f%%"));
-        Button add = button("Agregar", "region-add", () -> begin(null)); add.setTooltip(new Tooltip("Agregar region"));
+        Button add = button("Agregar", "region-add", () -> begin(morris() && regions.size() == 1 && regions.get(0).isMorris() ? regions.get(0) : null)); add.setTooltip(new Tooltip("Agregar region; en Morris ajusta el unico cuadrante existente"));
         add.disableProperty().bind(player.videoReadyProperty().not().or(editing).or(locked).or(javafx.beans.binding.Bindings.size(regions).greaterThanOrEqualTo(32)));
         Button edit = button("Editar", "region-edit", () -> begin(list.getSelectionModel().getSelectedItem()));
         edit.disableProperty().bind(list.getSelectionModel().selectedItemProperty().isNull().or(editing).or(locked).or(player.videoReadyProperty().not()));
@@ -82,20 +85,41 @@ public final class RegionEditor extends VBox {
         Label count = new Label(); count.textProperty().bind(javafx.beans.binding.Bindings.size(draft).asString("Vertices: %d"));
         HBox drawingTools = new HBox(8, undo, redraw, count); drawingTools.setAlignment(Pos.CENTER_LEFT);
         Button save = button("Guardar", "region-save", this::save);
-        save.disableProperty().bind(javafx.beans.binding.Bindings.createBooleanBinding(() -> draft.size() < (morris() ? 2 : 3), draft, shape.valueProperty()).or(player.videoReadyProperty().not()).or(locked));
+        save.disableProperty().bind(javafx.beans.binding.Bindings.createBooleanBinding(() -> draft.size() < (morris() ? 2 : 3), draft, shape.valueProperty()).or(poolDrawing).or(player.videoReadyProperty().not()).or(locked));
         Button cancel = button("Cancelar", "region-cancel", this::cancel);
         save.setMinWidth(0); cancel.setMinWidth(0); save.setMaxWidth(Double.MAX_VALUE); cancel.setMaxWidth(Double.MAX_VALUE);
         HBox identity = new HBox(8, name, color); name.setMinWidth(0); HBox.setHgrow(name, Priority.ALWAYS);
         HBox actions = new HBox(8, save, cancel); HBox.setHgrow(save, Priority.ALWAYS); HBox.setHgrow(cancel, Priority.ALWAYS);
         quadrant.setId("pool-quadrant"); quadrant.getItems().setAll("Inferior derecho", "Inferior izquierdo", "Superior izquierdo", "Superior derecho"); quadrant.getSelectionModel().select(3); quadrant.setMaxWidth(Double.MAX_VALUE);
         quadrant.setTooltip(new Tooltip("Cuadrante objetivo. Angulos en coordenadas de imagen: 0 derecha, 90 abajo."));
-        quadrant.getSelectionModel().selectedIndexProperty().addListener((obs, old, value) -> { if (!updatingPool) poolAngle.getValueFactory().setValue(value.doubleValue() * 90); });
+        quadrant.setPromptText("Orientacion personalizada");
+        quadrant.getSelectionModel().selectedIndexProperty().addListener((obs, old, value) -> { if (!updatingPool && value.intValue() >= 0) poolAngle.getValueFactory().setValue(value.doubleValue() * 90); });
         poolAngle.setValueFactory(new SpinnerValueFactory.DoubleSpinnerValueFactory(0, 359, 270, 1));
         GridPane geometry = new GridPane(); geometry.setHgap(6); geometry.setVgap(6);
         Spinner<?>[] values = {poolX, poolY, poolRadius}; String[] labels = {"Centro X", "Centro Y", "Radio"};
         for (int i = 0; i < 3; i++) { geometry.add(new Label(labels[i]), i, 0); geometry.add(values[i], i, 1); GridPane.setHgrow(values[i], Priority.ALWAYS); ColumnConstraints column = new ColumnConstraints(); column.setPercentWidth(100.0 / 3); geometry.getColumnConstraints().add(column); }
         HBox rotation = new HBox(8, new Label("Angulo"), poolAngle); HBox.setHgrow(poolAngle, Priority.ALWAYS);
-        VBox pool = new VBox(8, geometry, quadrant, rotation); pool.visibleProperty().bind(shape.valueProperty().isEqualTo("Cuadrante (Morris)")); pool.managedProperty().bind(pool.visibleProperty());
+        angleSlider.setId("pool-angle-slider"); angleSlider.setBlockIncrement(1); angleSlider.setMajorTickUnit(90); angleSlider.setMinorTickCount(0); angleSlider.setShowTickMarks(true);
+        angleSlider.setTooltip(new Tooltip("Girar el unico cuadrante de 90 grados"));
+        angleSlider.valueProperty().addListener((obs, old, value) -> { if (!updatingPool) poolAngle.getValueFactory().setValue((double) Math.round(value.doubleValue())); });
+        poolAngle.valueProperty().addListener((obs, old, value) -> {
+            boolean wasUpdating = updatingPool; updatingPool = true;
+            angleSlider.setValue(value);
+            if (value % 90 == 0) quadrant.getSelectionModel().select((int) (value / 90)); else quadrant.getSelectionModel().clearSelection();
+            updatingPool = wasUpdating;
+        });
+        Label angleValue = new Label(); angleValue.textProperty().bind(poolAngle.valueProperty().asString("Angulo: %.1f\u00b0"));
+        Button less = symbol("\u2212", "pool-angle-less", "Disminuir angulo un grado", () -> poolAngle.getValueFactory().setValue((poolAngle.getValue() + 359) % 360));
+        Button more = symbol("+", "pool-angle-more", "Incrementar angulo un grado", () -> poolAngle.getValueFactory().setValue((poolAngle.getValue() + 1) % 360));
+        HBox angleTools = new HBox(8, angleValue, less, more); angleTools.setAlignment(Pos.CENTER_LEFT); HBox.setHgrow(angleValue, Priority.ALWAYS);
+        Button redrawPool = symbol("\u21bb", "pool-redraw", "Marcar de nuevo el centro y el extremo del radio", this::startPoolDrawing);
+        for (Button control : Arrays.asList(less, more, redrawPool)) {
+            control.getStyleClass().remove("outline"); control.setMinSize(34, 34); control.setPrefSize(34, 34); control.setMaxSize(34, 34);
+        }
+        Label radius = new Label(); radius.textProperty().bind(poolRadius.valueProperty().asString("Radio: %.1f px")); HBox radiusTools = new HBox(8, radius, redrawPool); radiusTools.setAlignment(Pos.CENTER_LEFT);
+        TitledPane precise = new TitledPane("Ajustes precisos", new VBox(8, geometry, rotation)); precise.setId("pool-precise"); precise.setExpanded(false);
+        for (javafx.scene.Node node : Arrays.asList(quadrant, angleSlider, less, more, precise)) node.disableProperty().bind(poolDrawing);
+        VBox pool = new VBox(8, radiusTools, quadrant, angleTools, angleSlider, precise); pool.visibleProperty().bind(shape.valueProperty().isEqualTo("Cuadrante (Morris)")); pool.managedProperty().bind(pool.visibleProperty());
         drawingTools.visibleProperty().bind(pool.visibleProperty().not()); drawingTools.managedProperty().bind(drawingTools.visibleProperty());
         form.getChildren().addAll(identity, pool, overlap, threshold, drawingTools, actions);
         for (Spinner<Double> value : Arrays.asList(poolX, poolY, poolRadius, poolAngle)) value.valueProperty().addListener((obs, old, next) -> updatePool());
@@ -139,15 +163,25 @@ public final class RegionEditor extends VBox {
             poolY.getValueFactory().setValue(region == null ? (height - 1) / 2.0 : region.getCenter().getY());
             poolRadius.getValueFactory().setValue(region == null ? Math.min(width, height) / 3.0 : region.getRadius());
             poolAngle.getValueFactory().setValue(region == null ? 270.0 : region.getAngle()); quadrant.getSelectionModel().select((int) (poolAngle.getValue() / 90));
-            updatingPool = false; awaitingEdge = false; updatePool();
+            updatingPool = false; radiusDirection = Math.toRadians(poolAngle.getValue()); updatePool();
         }
         editing.set(true); player.pause();
+        if (morris() && region == null) startPoolDrawing();
         player.setRegionClickHandler(point -> {
             if (morris()) {
-                updatingPool = true;
-                if (!awaitingEdge) { poolX.getValueFactory().setValue(point.getX()); poolY.getValueFactory().setValue(point.getY()); }
-                else poolRadius.getValueFactory().setValue(point.distance(new Point2D(poolX.getValue(), poolY.getValue())));
-                awaitingEdge = !awaitingEdge; updatingPool = false; updatePool(); return;
+                if (!drawingPool) return;
+                if (!awaitingEdge) {
+                    updatingPool = true; poolX.getValueFactory().setValue(point.getX()); poolY.getValueFactory().setValue(point.getY()); poolRadius.getValueFactory().setValue(0.0); updatingPool = false;
+                    awaitingEdge = true; draft.setAll(point); player.setRadiusGuide(Arrays.asList(point, point)); overlay();
+                } else {
+                    measureRadius(point);
+                    if (poolRadius.getValue() < 2) { message.setText("El radio debe ser mayor que 2 px."); return; }
+                    try { poolRegion("#00874b"); } catch (IllegalArgumentException ex) { message.setText(ex.getMessage()); return; }
+                    drawingPool = false; poolDrawing.set(false); player.setRegionMoveHandler(null);
+                    poolAngle.getValueFactory().setValue((double) (Math.round((Math.toDegrees(radiusDirection) + 360) % 360) % 360));
+                    player.getViewport().setCursor(javafx.scene.Cursor.DEFAULT); message.setText(""); updatePool();
+                }
+                return;
             }
             if (draft.size() >= 128) { message.setText("Maximo 128 vertices."); return; }
             if (!draft.isEmpty() && draft.get(draft.size() - 1).distance(point) < 1) return;
@@ -180,12 +214,25 @@ public final class RegionEditor extends VBox {
         catch (RuntimeException error) { message.setText(error.getMessage()); }
     }
 
-    public void cancel() { editing.set(false); replacing = null; draft.clear(); player.setRegionClickHandler(null); message.setText(""); overlay(); }
+    public void cancel() { editing.set(false); replacing = null; drawingPool = false; poolDrawing.set(false); draft.clear(); player.setRegionMoveHandler(null); player.setRadiusGuide(Collections.emptyList()); player.setRegionClickHandler(null); message.setText(""); overlay(); }
     public void setLocked(boolean value) { locked.set(value); if (value) cancel(); }
     public void showAnalysisStatus() { frame.setText("Regiones del analisis"); }
     private void updatePool() {
         if (updatingPool || !morris()) return;
-        Point2D center = new Point2D(poolX.getValue(), poolY.getValue()); draft.setAll(center, center.add(poolRadius.getValue(), 0)); overlay();
+        Point2D center = new Point2D(poolX.getValue(), poolY.getValue());
+        double direction = drawingPool ? radiusDirection : Math.toRadians(poolAngle.getValue());
+        Point2D edge = center.add(poolRadius.getValue() * Math.cos(direction), poolRadius.getValue() * Math.sin(direction));
+        draft.setAll(center, edge); overlay();
+    }
+    private void startPoolDrawing() {
+        drawingPool = true; awaitingEdge = false; poolDrawing.set(true); draft.clear(); player.setRadiusGuide(Collections.emptyList()); message.setText("");
+        player.getViewport().setCursor(javafx.scene.Cursor.CROSSHAIR);
+        player.setRegionMoveHandler(point -> { if (drawingPool && awaitingEdge) measureRadius(point); }); overlay();
+    }
+    private void measureRadius(Point2D point) {
+        Point2D center = new Point2D(poolX.getValue(), poolY.getValue());
+        radiusDirection = Math.atan2(point.getY() - center.getY(), point.getX() - center.getX());
+        updatingPool = true; poolRadius.getValueFactory().setValue(center.distance(point)); updatingPool = false; message.setText(""); updatePool();
     }
     private VideoRegion poolRegion(String hex) {
         return VideoRegion.morris(name.getText(), hex, new Point2D(poolX.getValue(), poolY.getValue()), poolRadius.getValue(), poolAngle.getValue(), threshold.getValue() / 100,
@@ -213,7 +260,9 @@ public final class RegionEditor extends VBox {
         List<VideoRegion> visible = new ArrayList<>(regions); if (replacing != null) visible.remove(replacing);
         VideoRegion selected = list.getSelectionModel().getSelectedItem();
         if (editing.get() && morris() && player.videoReadyProperty().get()) {
-            try { VideoRegion preview = poolRegion("#00874b"); visible.add(preview); player.setRegionOverlay(visible, Collections.emptyList(), preview.getName()); return; }
+            player.setRadiusGuide(draft.size() == 2 ? draft : Collections.emptyList());
+            if (draft.size() < 2) { player.setRegionOverlay(visible, draft, selected == null ? null : selected.getName()); return; }
+            try { VideoRegion preview = poolRegion("#00874b"); if (draft.size() == 2) visible.add(preview); player.setRegionOverlay(visible, Collections.emptyList(), preview.getName()); return; }
             catch (IllegalArgumentException ex) { message.setText(ex.getMessage()); }
         }
         player.setRegionOverlay(visible, draft, selected == null ? null : selected.getName());

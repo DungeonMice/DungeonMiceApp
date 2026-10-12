@@ -23,6 +23,8 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
     private List<VideoRegion> regionData = Collections.emptyList();
     private List<Point2D> draft = Collections.emptyList();
     private Consumer<Point2D> regionClick;
+    private Consumer<Point2D> regionMove;
+    private List<Point2D> radiusGuide = Collections.emptyList();
     private String highlighted;
     private final javafx.beans.property.BooleanProperty videoReady = new javafx.beans.property.SimpleBooleanProperty(false);
     private final Label status = new Label("Selecciona un video");
@@ -100,9 +102,13 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         });
         viewport.setOnMousePressed(e -> { mouseX = e.getSceneX(); mouseY = e.getSceneY(); });
         viewport.setOnMouseDragged(e -> {
+            if (regionMove != null) { Point2D point = sceneToVideo(e.getSceneX(), e.getSceneY()); if (point != null) regionMove.accept(point); return; }
             if (regionClick != null || zoom <= 1) return;
             panX += e.getSceneX() - mouseX; panY += e.getSceneY() - mouseY;
             mouseX = e.getSceneX(); mouseY = e.getSceneY(); clampPan();
+        });
+        viewport.setOnMouseMoved(e -> {
+            if (regionMove != null) { Point2D point = sceneToVideo(e.getSceneX(), e.getSceneY()); if (point != null) regionMove.accept(point); }
         });
         viewport.setOnMouseClicked(e -> {
             if (regionClick == null || e.getButton() != javafx.scene.input.MouseButton.PRIMARY) return;
@@ -183,6 +189,8 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
     public void setRegionClickHandler(Consumer<Point2D> handler) {
         regionClick = handler; viewport.setCursor(handler == null ? javafx.scene.Cursor.DEFAULT : javafx.scene.Cursor.CROSSHAIR);
     }
+    public void setRegionMoveHandler(Consumer<Point2D> handler) { regionMove = handler; }
+    public void setRadiusGuide(List<Point2D> points) { radiusGuide = new ArrayList<>(points); drawRegions(); }
     public void setRegionOverlay(List<VideoRegion> data, List<Point2D> points, String selected) {
         regionData = new ArrayList<>(data); draft = new ArrayList<>(points); highlighted = selected; drawRegions();
     }
@@ -217,6 +225,15 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
             g.fillPolygon(x, y, count); g.setStroke(color); g.setLineWidth(region.getName().equals(highlighted) ? 3 : 1.5); g.strokePolygon(x, y, count);
             g.setFill(Color.BLACK); g.fillText(region.getName(), x[0] + 5, y[0] - 5); g.setFill(color); g.fillText(region.getName(), x[0] + 4, y[0] - 6);
         }
+        if (radiusGuide.size() == 2) {
+            Point2D center = overlayPoint(radiusGuide.get(0)), edge = overlayPoint(radiusGuide.get(1));
+            g.setStroke(Color.BLACK); g.setLineWidth(5); g.strokeLine(center.getX(), center.getY(), edge.getX(), edge.getY());
+            g.setStroke(Color.WHITE); g.setLineWidth(2); g.strokeLine(center.getX(), center.getY(), edge.getX(), edge.getY());
+            for (Point2D handle : Arrays.asList(center, edge)) { g.setFill(Color.BLACK); g.fillOval(handle.getX() - 5, handle.getY() - 5, 10, 10); g.setFill(Color.WHITE); g.fillOval(handle.getX() - 3, handle.getY() - 3, 6, 6); }
+            String text = String.format(java.util.Locale.ROOT, "r = %.1f px", radiusGuide.get(0).distance(radiusGuide.get(1)));
+            double x = (center.getX() + edge.getX()) / 2 + 7, y = (center.getY() + edge.getY()) / 2 - 7;
+            g.setStroke(Color.BLACK); g.setLineWidth(3); g.strokeText(text, x, y); g.setFill(Color.WHITE); g.fillText(text, x, y);
+        }
         g.setStroke(Color.WHITE); g.setFill(Color.WHITE); g.setLineWidth(2);
         Point2D previous = null;
         for (Point2D point : draft) {
@@ -226,6 +243,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
     }
 
     @Override public void close() {
+        regionMove = null; regionClick = null; radiusGuide = Collections.emptyList();
         generation++; priming = false;
         if (pendingOpen != null) { pendingOpen.stop(); pendingOpen = null; }
         DirectPlayer previous = player; player = null;

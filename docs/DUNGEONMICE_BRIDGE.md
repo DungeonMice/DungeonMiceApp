@@ -198,9 +198,16 @@ the original video and Python source untouched and uses a disposable database.
 ## Morris Regions and Synchronized Views
 
 In Video > Regiones choose **Cuadrante (Morris)**, then Agregar. Mark the pool
-center and a point on its edge; the editor previews the pool outline and target
-quarter. Centro X/Y, Radio and Angulo allow precise adjustments; the quadrant
-menu sets the four cardinal quarters. Morris requires one region and replacing
+center, move the pointer to preview the radius line and confirm its endpoint.
+The line displays the original-pixel radius and rotates with the target sector.
+The angle slider and +/- controls rotate a single 90-degree quadrant; the
+quadrant menu sets the four cardinal quarters and clears its selection for custom
+angles. Completed geometry is not changed by accidental video clicks. Use the
+redraw icon to explicitly mark a new center/radius. Saving is blocked until a
+valid radius is confirmed; cancelling preserves the saved geometry.
+Centro X/Y, Radio and Angulo remain available inside the collapsed **Ajustes
+precisos** section. When a Morris quadrant already exists, Agregar edits that
+same region rather than creating another. Morris requires one region and replacing
 existing regions is confirmed explicitly. Existing per-video edit, delete,
 apply-to-project, region snapshots and batch export remain available.
 The stored/API geometry is native `CircularFractionRegion` with `fraction: 0.25`,
