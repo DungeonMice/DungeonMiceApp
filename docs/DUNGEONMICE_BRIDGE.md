@@ -258,6 +258,31 @@ Run `scripts/check-frames.ps1 -Experiment MorrisPool -VideoDirectory
 MOV, AVI, MP4, MKV and M4V, recursively finds videos, and checks UI dimensions
 against the region metadata instead of assuming CrossMaze's 1280x720 frames.
 
+## Project-Wide Frame Analysis
+
+**Procesar todos** in the main processing panel confirms replacement of existing
+per-video regions, copies the selected video's saved regions to every project
+video, and processes them sequentially using the native per-frame engine. Region
+editing must be saved or cancelled first. Videos must share resolution and camera
+framing; incompatible/missing videos fail individually and the queue continues.
+Individual region editing remains available after processing or cancellation.
+
+The progress bar combines the current video's frame fraction with finished
+videos. Its label shows the video number, filename and percentage; the final
+summary counts successes and failures. The live view retains the three analysis
+tabs, pause/resume and bounded cached navigation. A session is closed and its
+capture released before the next video starts. Cancel and workspace navigation
+stop the queue; a replacement session waits for cleanup of the previous one.
+If cleanup fails, the batch stops instead of opening conflicting native sessions.
+
+The batch reads original paths and does not create/export MP4s or register fake
+processed-video results. Frame caches remain ephemeral; logs are available for
+each video during the session. Optional **Exportar todos** remains a separate,
+collapsed MP4 export action. `scripts/check-frame-batch.ps1` tests confirmation,
+region replacement, progress, pause/views, sequential session release, failure
+continuation, cancellation/restart and navigation with short synthetic AVI files
+and an isolated database. It does not modify the original Python application.
+
 ## Existing Adapter Files
 
 `scripts/dungeonmice_api_bridge.py` is the real processing adapter.

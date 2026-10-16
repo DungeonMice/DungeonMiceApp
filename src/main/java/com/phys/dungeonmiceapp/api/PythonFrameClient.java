@@ -80,9 +80,16 @@ public final class PythonFrameClient implements AutoCloseable {
         catch (RuntimeException ignored) { }
         return new IOException("Python (HTTP " + code + "): " + detail);
     }
-    @Override public void close() {
+    public void closeChecked() throws IOException, InterruptedException {
         closed = true;
-        try (InputStream ignored = send(request("api/v1/frame-sessions/" + id).DELETE().build(), 200)) { }
+        HttpResponse<InputStream> reply = http.send(request("api/v1/frame-sessions/" + id).DELETE().build(), HttpResponse.BodyHandlers.ofInputStream());
+        try (InputStream input = reply.body()) {
+            // Opening may have failed before the session existed; cleanup is idempotent.
+            if (reply.statusCode() != 200 && reply.statusCode() != 410) throw failure(reply.statusCode(), input);
+        }
+    }
+    @Override public void close() {
+        try { closeChecked(); }
         catch (IOException | InterruptedException ignored) { if (ignored instanceof InterruptedException) Thread.currentThread().interrupt(); }
     }
 }

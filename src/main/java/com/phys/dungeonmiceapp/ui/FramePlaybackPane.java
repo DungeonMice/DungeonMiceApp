@@ -37,6 +37,12 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
     private double mouseX, mouseY;
     private JsonObject previousStates;
     private Future<?> request;
+    private Consumer<Throwable> onFinished = error -> { };
+    private boolean finished;
+    private CompletableFuture<Void> cleanup;
+
+    public void setOnFinished(Consumer<Throwable> callback) { onFinished = Objects.requireNonNull(callback); }
+    private void finish(Throwable error) { if (!finished) { finished = true; onFinished.accept(error); } }
 
     public FramePlaybackPane(PythonFrameClient client, Path source, JsonArray regions, Consumer<String> log) {
         this.client = client; this.log = log;
@@ -99,7 +105,7 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
                 Platform.runLater(() -> {
                     if (closed) return;
                     pending = false; loading.setVisible(false);
-                    if (frame == null) { playing = false; status.setText("Analisis completado"); status.setVisible(true); log.accept("Analisis por frames completado: " + processed + " frames"); return; }
+                    if (frame == null) { playing = false; progress.set(1); status.setText("Analisis completado"); status.setVisible(true); log.accept("Analisis por frames completado: " + processed + " frames"); finish(null); return; }
                     shown = frame.metadata.get("index").getAsInt();
                     processed = Math.max(processed, shown);
                     progress.set((double) processed / total);
@@ -127,7 +133,7 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         });
     }
     private void failed(Exception error) {
-        Platform.runLater(() -> { if (closed) return; pending = false; playing = false; loading.setVisible(false); status.setText(error.getMessage()); status.setVisible(true); log.accept("Error de analisis por frames: " + error.getMessage()); });
+        Platform.runLater(() -> { if (closed) return; pending = false; playing = false; loading.setVisible(false); status.setText(error.getMessage()); status.setVisible(true); log.accept("Error de analisis por frames: " + error.getMessage()); finish(error); });
     }
     private static Button button(String text, String id, String tooltip, Runnable action) {
         Button button = new Button(text); button.setId(id); button.getStyleClass().add("icon-button"); button.setTooltip(new Tooltip(tooltip)); button.setAccessibleText(tooltip); button.setOnAction(event -> action.run()); return button;
@@ -142,9 +148,18 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         double y = Math.max(0, (image.getBoundsInLocal().getHeight() * zoom - viewport.getHeight()) / 2);
         image.setTranslateX(Math.max(-x, Math.min(x, image.getTranslateX()))); image.setTranslateY(Math.max(-y, Math.min(y, image.getTranslateY())));
     }
-    @Override public void close() {
-        if (closed) return; closed = true; playing = false;
+    public CompletableFuture<Void> closeAsync() {
+        if (cleanup != null) return cleanup;
+        cleanup = new CompletableFuture<>(); closed = true; playing = false;
         if (request != null) request.cancel(true); worker.shutdownNow(); image.setImage(null); currentViews = Collections.emptyMap();
-        Thread cleanup = new Thread(client::close, "dungeonmice-frame-close"); cleanup.setDaemon(true); cleanup.start();
+        // Wait for an in-flight open/next before deleting the server's single session.
+        Thread thread = new Thread(() -> {
+            try {
+                if (!worker.awaitTermination(35, TimeUnit.SECONDS)) throw new TimeoutException("No se pudo detener el analizador");
+                client.closeChecked(); cleanup.complete(null);
+            } catch (Exception error) { cleanup.completeExceptionally(error); }
+        }, "dungeonmice-frame-close"); thread.setDaemon(true); thread.start();
+        return cleanup;
     }
+    @Override public void close() { closeAsync(); }
 }

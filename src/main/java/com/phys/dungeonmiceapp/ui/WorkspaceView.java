@@ -65,6 +65,9 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private boolean closed;
     private Task<?> apiTask;
     private FramePlaybackPane framePlayer;
+    private FrameBatchPane frameBatch;
+    private CompletableFuture<Void> frameRelease = CompletableFuture.completedFuture(null);
+    private long frameGeneration;
     private Runnable restoreOriginal;
     private String frameToken = System.getProperty("dungeonmice.python.token", "");
     private final javafx.beans.property.BooleanProperty processingBusy = new javafx.beans.property.SimpleBooleanProperty(false);
@@ -519,7 +522,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         load.disableProperty().bind(processingBusy);
         choices.setMinWidth(120); choices.setMaxWidth(300); choices.setPrefWidth(250);
         load.setMinWidth(0); load.setPrefWidth(145); remove.setMinWidth(0); remove.setPrefWidth(145);
-        HBox tools = new HBox(10, choices, load, remove, iconButton("zoom", "Acercar", () -> { if (framePlayer != null) framePlayer.setZoom(2); else player.setZoom(2); }), iconButton("reset", "Restablecer zoom", () -> { if (framePlayer != null) framePlayer.setZoom(1); else player.resetZoom(); }));
+        HBox tools = new HBox(10, choices, load, remove, iconButton("zoom", "Acercar", () -> { if (frameBatch != null) frameBatch.setZoom(2); else if (framePlayer != null) framePlayer.setZoom(2); else player.setZoom(2); }), iconButton("reset", "Restablecer zoom", () -> { if (frameBatch != null) frameBatch.setZoom(1); else if (framePlayer != null) framePlayer.setZoom(1); else player.resetZoom(); }));
         tools.getStyleClass().add("mode-toolbar"); tools.setAlignment(Pos.CENTER_LEFT);
         VBox sidebar = new VBox(12, identity(), inspector, pythonPanel(choices, player, regions)); sidebar.setId("video-sidebar"); sidebar.setMinWidth(310); sidebar.setPrefWidth(310); sidebar.setMaxWidth(310); sidebar.setMinHeight(0); sidebar.setPadding(new Insets(12, 16, 16, 0)); VBox.setVgrow(inspector, Priority.ALWAYS);
         BorderPane page = new BorderPane(); page.setTop(tools); player.setPadding(new Insets(12, 16, 16, 16)); page.setCenter(player); page.setRight(sidebar); return page;
@@ -668,7 +671,54 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 files.submit(task);
             } catch (IOException | RuntimeException ex) { error(ex); }
         });
-        processAll.setId("python-process-all"); processAll.disableProperty().bind(process.disableProperty());
+        processAll.setId("python-export-all"); processAll.disableProperty().bind(process.disableProperty());
+        Button allFrames = button("Procesar todos", "primary", () -> {
+            Video source = choices.getValue();
+            if (source == null || busy.get() || apiTask != null) return;
+            try {
+                regions.requestRegions();
+                if (!confirm("Procesar todos los videos", "Se aplicaran las regiones actuales a todos los videos del proyecto, reemplazando sus regiones individuales. Deben tener la misma resolucion y encuadre. Se analizaran por frames, sin exportar MP4. Continuar?")) return;
+                // Validate connection before changing the saved region templates.
+                java.net.URI address = java.net.URI.create(pythonAddress.getText().trim());
+                new com.phys.dungeonmiceapp.api.PythonFrameClient(address, frameToken);
+                VideoRepository.applyRegionsToGroup(paneProject, source.getId(), true);
+                List<Video> videos = VideoRepository.findByGroup(paneProject);
+                Map<String, JsonArray> payloads = new HashMap<>();
+                for (Video video : videos) {
+                    JsonArray payload = new JsonArray();
+                    for (VideoRegion region : VideoRepository.findRegions(video.getId())) payload.add(region.toJson());
+                    payloads.put(video.getId(), payload);
+                    logVideo(video, "00:00:00.000", "Regiones aplicadas. En cola para analisis por frames.", false);
+                }
+                BorderPane page = (BorderPane) player.getParent();
+                cancelPreparation(player); player.close(); busy.set(true); regions.showAnalysisStatus();
+                FrameBatchPane batch = new FrameBatchPane(videos, payloads, address, frameToken,
+                        (video, text) -> logVideo(video, "00:00:00.000", text, text.startsWith("Error")),
+                        () -> {
+                            String summary = status.getText();
+                            frameRelease = frameBatch.cleanupFuture();
+                            progress.progressProperty().unbind(); status.textProperty().unbind();
+                            frameBatch = null; restoreOriginal = null; page.setCenter(player); busy.set(false);
+                            status.setText(summary); refreshResult.run(); openVideo(player, MediaFiles.resolve(source.getFilePath()), false);
+                        });
+                frameBatch = batch;
+                restoreOriginal = () -> {
+                    String summary = status.getText();
+                    progress.progressProperty().unbind(); status.textProperty().unbind();
+                    page.setCenter(player); busy.set(false); status.setText(summary);
+                    openVideo(player, MediaFiles.resolve(source.getFilePath()), false);
+                };
+                page.setCenter(batch); progress.progressProperty().bind(batch.progressProperty()); status.textProperty().bind(batch.messageProperty());
+                frameRelease.whenComplete((ignored, failure) -> Platform.runLater(() -> {
+                    if (!closed && frameBatch == batch) {
+                        if (failure == null) batch.start();
+                        else { cancelApi(); status.setText("No se pudo liberar la sesion anterior. Reinicia la conexion."); }
+                    }
+                }));
+            } catch (RuntimeException ex) { error(ex); }
+        });
+        allFrames.setId("python-process-all"); allFrames.setMinWidth(0); allFrames.setMaxWidth(Double.MAX_VALUE);
+        allFrames.disableProperty().bind(process.disableProperty());
         Button frames = button("Procesar por frames", "primary", () -> {
             if (framePlayer != null) { cancelApi(); return; }
             Video source = choices.getValue(); if (source == null || apiTask != null) return;
@@ -679,11 +729,15 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 cancelPreparation(player); player.close(); busy.set(true); status.setText("Analisis por frames activo");
                 regions.showAnalysisStatus();
                 restoreOriginal = () -> { progress.progressProperty().unbind(); page.setCenter(player); busy.set(false); status.setText(""); openVideo(player, MediaFiles.resolve(source.getFilePath()), false); };
-                framePlayer = new FramePlaybackPane(client, MediaFiles.resolve(source.getFilePath()).toPath(), payload,
-                        text -> logVideo(source, "00:00:00.000", text, text.startsWith("Error")));
-                page.setCenter(framePlayer);
-                progress.progressProperty().bind(framePlayer.progressProperty());
-                framePlayer.play();
+                long generation = frameGeneration;
+                frameRelease.whenComplete((ignored, failure) -> Platform.runLater(() -> {
+                    if (closed || frameGeneration != generation || !busy.get() || restoreOriginal == null) return;
+                    if (failure != null) { cancelApi(); status.setText("No se pudo liberar la sesion anterior. Reinicia la conexion."); return; }
+                    framePlayer = new FramePlaybackPane(client, MediaFiles.resolve(source.getFilePath()).toPath(), payload,
+                            text -> logVideo(source, "00:00:00.000", text, text.startsWith("Error")));
+                    page.setCenter(framePlayer);
+                    progress.progressProperty().bind(framePlayer.progressProperty()); framePlayer.play();
+                }));
             } catch (RuntimeException ex) { error(ex); }
         });
         frames.setId("python-process"); frames.setMinWidth(0); frames.setMaxWidth(Double.MAX_VALUE);
@@ -691,7 +745,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         pythonAddress.disableProperty().bind(busy);
         choices.disableProperty().bind(busy);
         busy.addListener((obs, old, value) -> { processingBusy.set(value); regions.setLocked(value); });
-        Button cancel = button("Cancelar", "outline", this::cancelApi); cancel.disableProperty().bind(busy.not());
+        Button cancel = button("Cancelar", "outline", this::cancelApi); cancel.setId("python-cancel"); cancel.disableProperty().bind(busy.not());
         view.setId("python-result");
         for (Button button : new Button[]{process, processAll, cancel, view}) { button.setMinWidth(0); button.setMaxWidth(Double.MAX_VALUE); }
         cancel.visibleProperty().bind(busy); cancel.managedProperty().bind(busy);
@@ -699,7 +753,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         TitledPane advanced = new TitledPane("Conexion", pythonAddress); advanced.setExpanded(false); advanced.getStyleClass().add("connection-settings");
         HBox actions = new HBox(6, process, processAll); HBox.setHgrow(process, Priority.ALWAYS); HBox.setHgrow(processAll, Priority.ALWAYS);
         TitledPane export = new TitledPane("Exportacion MP4 (opcional)", actions); export.setId("python-export-options"); export.setExpanded(false); export.getStyleClass().add("connection-settings"); export.disableProperty().bind(busy);
-        panel.getChildren().addAll(connection, progress, status, frames, cancel, view, export, advanced); return panel;
+        panel.getChildren().addAll(connection, progress, status, frames, allFrames, cancel, view, export, advanced); return panel;
     }
 
     public void pythonConnecting() { pythonAvailable.set(false); pythonStatus.set("Conectando..."); pythonAddress.setEditable(false); }
@@ -708,12 +762,14 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     public void pythonUnavailable(String message) { if (closed) return; pythonAvailable.set(false); pythonStatus.set("Python no disponible"); pythonAddress.setTooltip(new Tooltip(message)); System.err.println("[Python] " + message); }
 
     private void cancelApi() {
+        frameGeneration++;
         if (apiTask != null) { apiTask.cancel(true); apiTask = null; }
+        if (frameBatch != null) { frameRelease = frameBatch.closeAsync(); frameBatch = null; }
         if (framePlayer != null) {
-            framePlayer.close(); framePlayer = null;
-            Runnable restore = restoreOriginal; restoreOriginal = null;
-            if (!closed && restore != null) restore.run();
+            frameRelease = framePlayer.closeAsync(); framePlayer = null;
         }
+        Runnable restore = restoreOriginal; restoreOriginal = null;
+        if (!closed && restore != null) restore.run();
         processingBusy.set(false);
     }
 
