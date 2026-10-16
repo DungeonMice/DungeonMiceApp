@@ -137,7 +137,7 @@ Coordinates remain in original pixels: templates require the same resolution
 and framing. The Python adapter rejects incompatible dimensions; it never
 silently scales polygons or analyzes with mismatched coordinates.
 
-**Procesar todos** takes a snapshot of every video's own valid saved regions
+**Exportar todos**, inside the optional MP4 export section, takes a snapshot of every video's own valid saved regions
 (two or more CrossMaze polygons, or one Morris quadrant) and asks once for an external output directory. Videos are sent
 sequentially to the same Python API. Existing results are not overwritten;
 duplicate basenames receive numeric suffixes. Each completed result is immediately
@@ -150,10 +150,10 @@ failure, cancellation, ownership and independent-region persistence checks.
 
 ## On-demand frame analysis
 
-The Video workspace now offers **Analizar por frames** in addition to the
-existing MP4 export controls. It calls the pulled Python
+The primary Video action is **Procesar por frames**. It calls the pulled Python
 `src/RunExperiment_per_frame.py` / `VideoAnalyzer` without modifying that source.
-The first frame opens paused. Play requests frames sequentially, paced by source
+The player starts automatically as frames arrive; it does not open a Save dialog,
+upload a video or generate/register a processed MP4. Play requests frames sequentially, paced by source
 FPS when processing is fast enough. Pause stops requesting new frames (one
 already in flight may finish). Previous/next and the timeline revisit cached
 frames without reanalysis; zoom and pan work in the frame viewport. Region
@@ -169,8 +169,12 @@ available cache window; older frames are not silently reanalyzed. Engine
 `processed_count`/`get()` are not used by the adapter: its own absolute count
 and bounded cache define the API. Other engine configuration/scientific behavior
 is preserved, including the preset warmup. Sessions are ephemeral, not added to
-the persistent MP4 library in **Procesados**. That library/export workflow is
-still available through **Procesar video** / **Procesar todos**.
+the persistent MP4 library in **Procesados**. The old export workflow is explicitly
+separate under the collapsed **Exportacion MP4 (opcional)** section, using
+**Exportar MP4** / **Exportar todos**. **Ver MP4 guardado** opens only a previous
+explicitly exported result. FFmpeg is checked only when exporting MP4; frame
+analysis does not require FFmpeg. Session metadata identifies the actual native
+engine as `RunExperiment_per_frame.VideoAnalyzer`, checked by the integration tests.
 
 Frame sessions hold the same single-analysis slot as MP4 jobs. Cancel, navigation
 and app shutdown close them; idle sessions expire after five minutes. The

@@ -9,6 +9,13 @@ import dungeonmice_api_bridge as bridge
 
 
 class BridgeChecks(unittest.TestCase):
+    def test_ffmpeg_is_only_required_for_mp4_export(self):
+        with patch.object(bridge.shutil, "which", return_value=None):
+            with self.assertRaisesRegex(ValueError, "frames no lo necesita"):
+                bridge.require_mp4_encoder()
+        with patch.object(bridge.shutil, "which", return_value="ffmpeg"):
+            bridge.require_mp4_encoder()
+
     def test_polygon_translation_does_not_modify_original(self):
         regions = [{"id": "este", "points": [{"x": 1, "y": 2}, {"x": 4, "y": 2}, {"x": 4, "y": 5}]}]
         native = bridge.normalize_regions(regions)

@@ -80,6 +80,7 @@ public final class ProcessedVideoChecks extends Application {
             await(() -> stage.getScene().getWidth() <= 1000, () -> {
                 css(); Node process = workspace.lookup("#python-process"); javafx.geometry.Bounds bounds = process.localToScene(process.getBoundsInLocal());
                 check(bounds.getMinY() >= 0 && bounds.getMaxY() <= stage.getScene().getHeight(), "Processing controls remain visible in compact window"); snapshot("logs-1000x740.png");
+                TitledPane exports = (TitledPane) workspace.lookup("#python-export-options"); check(!exports.isExpanded(), "Optional MP4 exports start collapsed below the primary frame action"); exports.setAnimated(false); exports.setExpanded(true); css();
                 Node batch = workspace.lookup("#python-process-all"); javafx.geometry.Bounds batchBounds = batch.localToScene(batch.getBoundsInLocal());
                 check(batchBounds.getMaxX() <= stage.getScene().getWidth() && batchBounds.getMaxY() <= stage.getScene().getHeight(), "Batch processing button fits compact window");
                 check(workspace.lookup("#region-apply-all") != null, "Region template action remains available alongside individual editing");

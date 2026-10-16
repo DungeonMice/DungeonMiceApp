@@ -546,7 +546,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         Label status = new Label(); status.setId("processing-status"); status.setWrapText(true); status.setMaxWidth(Double.MAX_VALUE);
         javafx.beans.property.BooleanProperty busy = new javafx.beans.property.SimpleBooleanProperty(false);
         ProgressBar progress = new ProgressBar(); progress.setId("processing-progress"); progress.setMaxWidth(Double.MAX_VALUE); progress.visibleProperty().bind(busy); progress.managedProperty().bind(busy);
-        Button view = button("Ver resultado", "outline", () -> {
+        Button view = button("Ver MP4 guardado", "outline", () -> {
             Video current = choices.getValue(); if (current == null) return;
             ProcessedVideo result = ProcessedVideoRepository.findByProject(paneProject).stream().filter(v -> current.getId().equals(v.getSourceId())).findFirst().orElse(null);
             if (result != null) { selectedProcessedId = result.getId(); show("processed"); }
@@ -557,7 +557,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             catch (IllegalArgumentException ex) { view.setDisable(true); }
         };
         choices.valueProperty().addListener((obs, old, current) -> refreshResult.run()); refreshResult.run();
-        Button process = button("Procesar video", "primary", () -> {
+        Button process = button("Exportar MP4", "outline", () -> {
             Video video = choices.getValue(); if (video == null || apiTask != null) return;
             final JsonArray regionPayload;
             try { regionPayload = regions.requestRegions(); }
@@ -607,8 +607,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 files.submit(task);
             } catch (RuntimeException | IOException ex) { error(ex); }
         });
-        process.setId("python-process"); process.disableProperty().bind(choices.valueProperty().isNull().or(busy).or(pythonAvailable.not()));
-        Button processAll = button("Procesar todos", "outline", () -> {
+        process.setId("python-export"); process.disableProperty().bind(choices.valueProperty().isNull().or(busy).or(pythonAvailable.not()));
+        Button processAll = button("Exportar todos", "outline", () -> {
             if (apiTask != null) return;
             try {
                 regions.requestRegions();
@@ -669,7 +669,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             } catch (IOException | RuntimeException ex) { error(ex); }
         });
         processAll.setId("python-process-all"); processAll.disableProperty().bind(process.disableProperty());
-        Button frames = button("Analizar por frames", "primary", () -> {
+        Button frames = button("Procesar por frames", "primary", () -> {
             if (framePlayer != null) { cancelApi(); return; }
             Video source = choices.getValue(); if (source == null || apiTask != null) return;
             try {
@@ -683,9 +683,10 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                         text -> logVideo(source, "00:00:00.000", text, text.startsWith("Error")));
                 page.setCenter(framePlayer);
                 progress.progressProperty().bind(framePlayer.progressProperty());
+                framePlayer.play();
             } catch (RuntimeException ex) { error(ex); }
         });
-        frames.setId("python-frames"); frames.setMinWidth(0); frames.setMaxWidth(Double.MAX_VALUE);
+        frames.setId("python-process"); frames.setMinWidth(0); frames.setMaxWidth(Double.MAX_VALUE);
         frames.disableProperty().bind(choices.valueProperty().isNull().or(busy).or(pythonAvailable.not()));
         pythonAddress.disableProperty().bind(busy);
         choices.disableProperty().bind(busy);
@@ -697,7 +698,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         view.visibleProperty().bind(busy.not()); view.managedProperty().bind(busy.not());
         TitledPane advanced = new TitledPane("Conexion", pythonAddress); advanced.setExpanded(false); advanced.getStyleClass().add("connection-settings");
         HBox actions = new HBox(6, process, processAll); HBox.setHgrow(process, Priority.ALWAYS); HBox.setHgrow(processAll, Priority.ALWAYS);
-        panel.getChildren().addAll(connection, progress, status, frames, actions, cancel, view, advanced); return panel;
+        TitledPane export = new TitledPane("Exportacion MP4 (opcional)", actions); export.setId("python-export-options"); export.setExpanded(false); export.getStyleClass().add("connection-settings"); export.disableProperty().bind(busy);
+        panel.getChildren().addAll(connection, progress, status, frames, cancel, view, export, advanced); return panel;
     }
 
     public void pythonConnecting() { pythonAvailable.set(false); pythonStatus.set("Conectando..."); pythonAddress.setEditable(false); }

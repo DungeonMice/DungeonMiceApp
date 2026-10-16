@@ -25,6 +25,7 @@ public final class FrameUiChecks extends Application {
     private Path temporary;
     private Timeline waiting;
     private int expectedWidth, expectedHeight;
+    private String projectId;
     private void check(boolean value, String text) { if (!value) throw new AssertionError(text); System.out.println("PASS " + text); }
     @Override public void start(Stage stage) {
         this.stage = stage;
@@ -33,6 +34,7 @@ public final class FrameUiChecks extends Application {
             System.setProperty("dungeonmice.database", temporary.resolve("data/database.enc").toString()); System.setProperty("dungeonmice.storage", temporary.resolve("app").toString());
             Files.createDirectories(temporary.resolve("app")); DatabaseManager.connect(); SessionManager.setCurrentUser(UserRepository.login("admin", "admin123"));
             VideoGroup group = VideoGroupRepository.saveProject(null, "Frames", "", "", "", "", "");
+            projectId = group.getId();
             VideoRepository.addReferences(group.getId(), Collections.singletonList(FrameApiChecks.source(getParameters().getRaw().get(0)).toFile()));
             Video video = VideoRepository.findByGroup(group.getId()).get(0); List<VideoRegion> regions = new ArrayList<>();
             for (JsonElement item : JsonParser.parseString(Files.readString(Paths.get(getParameters().getRaw().get(1)))).getAsJsonArray()) {
@@ -51,15 +53,20 @@ public final class FrameUiChecks extends Application {
     private ImageView image() { return (ImageView) workspace.lookup("#analysis-frame"); }
     private FramePlaybackPane player() { return (FramePlaybackPane) workspace.lookup("#frame-player"); }
     private void openFrames() {
-        fire("python-frames");
+        check(!((TitledPane) workspace.lookup("#python-export-options")).isExpanded(), "MP4 export is not the primary analysis workflow");
+        check(((Button) workspace.lookup("#python-process")).getText().equals("Procesar por frames"), "Main processing action explicitly selects the native frame engine");
+        fire("python-process");
         await(() -> image() != null && image().getImage() != null, () -> {
             check(image().getImage().getWidth() == expectedWidth && image().getImage().getHeight() == expectedHeight, "Python frame rendered at original dimensions in main UI");
             check(((Button) workspace.lookup("#python-process")).isDisabled() && ((Button) workspace.lookup("#region-add")).isDisabled(), "Conflicting processing and region edits locked during frame session");
-            snapshot("frames-1440x900.png"); fire("frame-play");
+            snapshot("frames-1440x900.png");
             await(() -> ((Slider) workspace.lookup("#frame-seek")).getMax() >= 5, () -> {
                 fire("frame-pause"); delay(700, () -> {
                     double paused = player().progressProperty().get(); delay(500, () -> {
                         check(player().progressProperty().get() == paused, "Pausing main UI stops frame analysis requests");
+                        check(ProcessedVideoRepository.findByProject(projectId).isEmpty(), "Live frame analysis never registers a processed MP4");
+                        try (java.util.stream.Stream<Path> files = Files.walk(temporary)) { check(files.noneMatch(path -> path.toString().toLowerCase(Locale.ROOT).endsWith(".mp4")), "Primary frame workflow produces no MP4 file"); }
+                        catch (java.io.IOException error) { throw new RuntimeException(error); }
                         TabPane views = (TabPane) workspace.lookup("#frame-views");
                         check(views.getTabs().size() == 3, "Three analysis views available in main player");
                         javafx.scene.image.Image videoImage = image().getImage(); views.getSelectionModel().select(1);
@@ -72,7 +79,7 @@ public final class FrameUiChecks extends Application {
                                 check(next.localToScene(next.getBoundsInLocal()).getMaxY() <= stage.getScene().getHeight(), "Frame controls fit compact window");
                                 fire("nav-data"); check(workspace.lookup("#frame-player") == null, "Navigation disposes live frame player"); fire("nav-video");
                                 await(() -> workspace.lookup("#playback-viewport") != null && ((PlaybackPane) workspace.lookup("#playback-viewport").getParent()).videoReadyProperty().get(), () -> {
-                                    check(!((Button) workspace.lookup("#python-frames")).isDisabled(), "Original playback and frame action restored after navigation"); Platform.exit();
+                                    check(!((Button) workspace.lookup("#python-process")).isDisabled(), "Original playback and frame action restored after navigation"); Platform.exit();
                                 });
                             });
                         });

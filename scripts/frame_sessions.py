@@ -70,7 +70,8 @@ class Session:
         return dict(sessionId=self.id, width=self.width, height=self.height,
                     fps=self.analyzer.fps, total=self.analyzer.total_frames,
                     processed=self.count, firstCached=next(iter(self.cache), 0), cachedBytes=self.bytes,
-                    experiment=self.kind, views=["video", "detection", "trajectory"])
+                    experiment=self.kind, views=["video", "detection", "trajectory"],
+                    engine=type(self.analyzer).__module__ + "." + type(self.analyzer).__name__)
 
     def next(self):
         data = self.analyzer.next()

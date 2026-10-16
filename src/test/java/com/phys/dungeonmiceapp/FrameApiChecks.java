@@ -15,7 +15,8 @@ public final class FrameApiChecks {
     public static Path source(String argument) throws IOException {
         Path path = Paths.get(argument);
         if (!Files.isDirectory(path)) return path.toRealPath();
-        try (java.util.stream.Stream<Path> files = Files.walk(path)) { return files.filter(Files::isRegularFile).filter(file -> file.toString().toLowerCase(Locale.ROOT).matches(".*\\.(mov|avi|mp4|mkv|m4v)$")).sorted().findFirst().orElseThrow(() -> new IOException("No supported video")); }
+        Comparator<Path> originalsFirst = Comparator.comparingInt((Path file) -> file.toString().toLowerCase(Locale.ROOT).endsWith(".mov") ? 0 : file.toString().toLowerCase(Locale.ROOT).endsWith(".avi") ? 1 : 2).thenComparing(Path::toString);
+        try (java.util.stream.Stream<Path> files = Files.walk(path)) { return files.filter(Files::isRegularFile).filter(file -> file.toString().toLowerCase(Locale.ROOT).matches(".*\\.(mov|avi|mp4|mkv|m4v)$")).sorted(originalsFirst).findFirst().orElseThrow(() -> new IOException("No supported video")); }
     }
     private static void check(boolean value, String message) { if (!value) throw new AssertionError(message); System.out.println("PASS " + message); }
     private static byte[] hash(Path source) throws Exception {
@@ -34,6 +35,7 @@ public final class FrameApiChecks {
             try (PythonFrameClient client = new PythonFrameClient(uri, bridge.frameToken())) {
                 JsonObject open = client.open(source, regions); String id = open.get("sessionId").getAsString();
                 check(open.get("experiment").getAsString().equals(com.phys.dungeonmiceapp.model.VideoRegion.analysisType(regions)), "Native engine matches selected experiment");
+                check(open.get("engine").getAsString().equals("RunExperiment_per_frame.VideoAnalyzer"), "Frame requests use the protected original RunExperiment_per_frame engine");
                 check(open.get("processed").getAsInt() == 0, "Opening a session does not analyze frames");
                 Thread.sleep(300); check(info(uri, id, bridge.frameToken()).get("processed").getAsInt() == 0, "No demand means no processing");
                 PythonFrameClient.Frame first = client.frame(-1);

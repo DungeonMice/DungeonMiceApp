@@ -150,7 +150,13 @@ class HeadlessVideo:
             self.capture.release()
 
 
+def require_mp4_encoder():
+    if shutil.which("ffmpeg") is None:
+        raise ValueError("La exportacion MP4 requiere FFmpeg en PATH. El analisis por frames no lo necesita.")
+
+
 def run_worker(request_path):
+    require_mp4_encoder()
     request_path = Path(request_path).resolve()
     request = json.loads(request_path.read_text(encoding="utf-8"))
     folder = request_path.parent
@@ -377,8 +383,6 @@ def main():
     import cv2
     import numpy
     import openpyxl
-    if shutil.which("ffmpeg") is None:
-        parser.error("FFmpeg must be available on PATH for MP4/AAC muxing")
     print(f"Dependencies: OpenCV {cv2.__version__}, NumPy {numpy.__version__}, openpyxl {openpyxl.__version__}", flush=True)
     OPTIONS = args
     threading.Thread(target=frame_sessions.expire, args=(PROCESS_SLOT, STOPPING), daemon=True).start()

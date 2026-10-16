@@ -78,7 +78,7 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
             } catch (Exception error) { failed(error); }
         });
     }
-    public void play() { if (closed || !ready) return; playing = true; if (!pending) next(); }
+    public void play() { if (closed) return; playing = true; if (ready && !pending) next(); }
     public void pause() { playing = false; }
     public void next() { if (!ready || pending || closed) return; fetch(shown < processed ? shown + 1 : -1); }
     public void seek(int index) {

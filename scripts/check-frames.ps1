@@ -4,7 +4,7 @@ Push-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('dungeonmice-frame-check-' + [guid]::NewGuid())
 try {
     New-Item -ItemType Directory -Path $temporary | Out-Null
-    $videos = @(Get-ChildItem -LiteralPath $VideoDirectory -Recurse -File | Where-Object { $_.Extension.ToLowerInvariant() -in @('.mov','.avi','.mp4','.mkv','.m4v') } | Sort-Object FullName)
+    $videos = @(Get-ChildItem -LiteralPath $VideoDirectory -Recurse -File | Where-Object { $_.Extension.ToLowerInvariant() -in @('.mov','.avi','.mp4','.mkv','.m4v') } | Sort-Object @{Expression={ switch ($_.Extension.ToLowerInvariant()) { '.mov' {0} '.avi' {1} default {2} } }},FullName)
     $source = $videos | Select-Object -First 1
     if (-not $source) { throw 'No video available in the selected directory' }
     $probe = (& ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of json $source.FullName) -join "`n" | ConvertFrom-Json
