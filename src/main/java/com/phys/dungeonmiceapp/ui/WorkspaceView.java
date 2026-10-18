@@ -726,9 +726,9 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 JsonArray payload = regions.requestRegions();
                 com.phys.dungeonmiceapp.api.PythonFrameClient client = new com.phys.dungeonmiceapp.api.PythonFrameClient(java.net.URI.create(pythonAddress.getText().trim()), frameToken);
                 BorderPane page = (BorderPane) player.getParent();
-                cancelPreparation(player); player.close(); busy.set(true); status.setText("Analisis por frames activo");
+                cancelPreparation(player); player.close(); busy.set(true); progress.setProgress(-1); status.setText("Preparando analisis por frames...");
                 regions.showAnalysisStatus();
-                restoreOriginal = () -> { progress.progressProperty().unbind(); page.setCenter(player); busy.set(false); status.setText(""); openVideo(player, MediaFiles.resolve(source.getFilePath()), false); };
+                restoreOriginal = () -> { progress.progressProperty().unbind(); status.textProperty().unbind(); page.setCenter(player); busy.set(false); status.setText(""); openVideo(player, MediaFiles.resolve(source.getFilePath()), false); };
                 long generation = frameGeneration;
                 frameRelease.whenComplete((ignored, failure) -> Platform.runLater(() -> {
                     if (closed || frameGeneration != generation || !busy.get() || restoreOriginal == null) return;
@@ -736,7 +736,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                     framePlayer = new FramePlaybackPane(client, MediaFiles.resolve(source.getFilePath()).toPath(), payload,
                             text -> logVideo(source, "00:00:00.000", text, text.startsWith("Error")));
                     page.setCenter(framePlayer);
-                    progress.progressProperty().bind(framePlayer.progressProperty()); framePlayer.play();
+                    progress.progressProperty().bind(framePlayer.progressProperty()); status.textProperty().bind(framePlayer.messageProperty()); framePlayer.play();
                 }));
             } catch (RuntimeException ex) { error(ex); }
         });

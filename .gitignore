@@ -1,5 +1,7 @@
 # Build and disposable test output
 /target/
+/dist/
+/dependency-reduced-pom.xml
 
 # Local database, user photos and legacy media are not source code
 /data/

@@ -109,6 +109,16 @@ public final class FrameBatchUiChecks extends Application {
             check(ProcessedVideoRepository.findByProject(project).isEmpty(), "Batch never registers an MP4 export");
             check(!((Button) workspace.lookup("#python-process-all")).isDisabled(), "Batch action unlocked after completion");
             check(((ProgressBar) workspace.lookup("#processing-progress")).getProgress() == 1, "Global progress reaches one");
+            await(this::originalReady, this::checkIndividualCompletion);
+        });
+    }
+    private void checkIndividualCompletion() {
+        fire("python-process");
+        await(() -> status().getText().startsWith("Completado"), () -> {
+            check(((ProgressBar) workspace.lookup("#frame-progress")).getProgress() == 1, "Individual progress reaches 100 percent at EOF");
+            check(((Label) workspace.lookup("#frame-progress-label")).getText().contains("100%"), "Individual completion label shows final percentage");
+            fire("python-cancel");
+            check(!status().textProperty().isBound(), "Individual progress bindings released on cancellation");
             await(this::originalReady, () -> {
                 confirmBatch(ButtonType.OK);
                 await(() -> workspace.lookup("#analysis-frame") != null && ((ImageView) workspace.lookup("#analysis-frame")).getImage() != null, () -> {

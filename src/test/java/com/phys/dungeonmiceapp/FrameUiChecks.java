@@ -58,12 +58,17 @@ public final class FrameUiChecks extends Application {
         fire("python-process");
         await(() -> image() != null && image().getImage() != null, () -> {
             check(image().getImage().getWidth() == expectedWidth && image().getImage().getHeight() == expectedHeight, "Python frame rendered at original dimensions in main UI");
+            ProgressBar progress = (ProgressBar) workspace.lookup("#frame-progress");
+            check(progress != null && progress.isVisible() && progress.getProgress() > 0, "Individual frame player has a visible determinate progress bar");
+            check(((Label) workspace.lookup("#frame-progress-label")).getText().contains("frames ("), "Individual progress displays frame count and percentage");
             check(((Button) workspace.lookup("#python-process")).isDisabled() && ((Button) workspace.lookup("#region-add")).isDisabled(), "Conflicting processing and region edits locked during frame session");
             snapshot("frames-1440x900.png");
             await(() -> ((Slider) workspace.lookup("#frame-seek")).getMax() >= 5, () -> {
                 fire("frame-pause"); delay(700, () -> {
                     double paused = player().progressProperty().get(); delay(500, () -> {
                         check(player().progressProperty().get() == paused, "Pausing main UI stops frame analysis requests");
+                        check(((ProgressBar) workspace.lookup("#frame-progress")).getProgress() == paused, "Visible frame progress stays fixed while paused");
+                        check(((Label) workspace.lookup("#processing-status")).getText().startsWith("Pausado"), "Sidebar reports the individual analysis state");
                         check(ProcessedVideoRepository.findByProject(projectId).isEmpty(), "Live frame analysis never registers a processed MP4");
                         try (java.util.stream.Stream<Path> files = Files.walk(temporary)) { check(files.noneMatch(path -> path.toString().toLowerCase(Locale.ROOT).endsWith(".mp4")), "Primary frame workflow produces no MP4 file"); }
                         catch (java.io.IOException error) { throw new RuntimeException(error); }
@@ -77,6 +82,7 @@ public final class FrameUiChecks extends Application {
                             stage.setWidth(1000); stage.setHeight(740); delay(300, () -> {
                                 snapshot("frames-1000x740.png"); Node next = workspace.lookup("#frame-next");
                                 check(next.localToScene(next.getBoundsInLocal()).getMaxY() <= stage.getScene().getHeight(), "Frame controls fit compact window");
+                                Node progressNode = workspace.lookup("#frame-progress"); check(progressNode.localToScene(progressNode.getBoundsInLocal()).getMaxY() <= stage.getScene().getHeight(), "Individual progress fits compact window");
                                 fire("nav-data"); check(workspace.lookup("#frame-player") == null, "Navigation disposes live frame player"); fire("nav-video");
                                 await(() -> workspace.lookup("#playback-viewport") != null && ((PlaybackPane) workspace.lookup("#playback-viewport").getParent()).videoReadyProperty().get(), () -> {
                                     check(!((Button) workspace.lookup("#python-process")).isDisabled(), "Original playback and frame action restored after navigation"); Platform.exit();

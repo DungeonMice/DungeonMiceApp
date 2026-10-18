@@ -1,5 +1,25 @@
 # Windows Data and Installer
 
+## Build the Windows EXE
+
+From the project directory, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1
+```
+
+The script runs `mvn clean package` and jpackage with the mouse icon and a bundled
+Java runtime. Output: `dist/DungeonMice/DungeonMice.exe`. Keep the whole app-image
+directory, not only the EXE. Use `-JavaHome 'C:\path\to\jdk-17'` when needed;
+`-SkipBuild` explicitly reuses the existing JAR. Close the app before rebuilding.
+Only generated app/runtime/launcher files are updated; existing database folders,
+original videos and VLC installer files are not deleted or copied into the JAR.
+Temporary jpackage output is removed after the build, and `dist` is ignored by Git.
+This produces the Java executable, not the final Inno Setup installer, and does
+not silently bundle Python or claim a complete production-ready distribution.
+
+## Per-User Data
+
 Default database: `%LOCALAPPDATA%\DungeonMice\data\database.enc`.
 Profile photos: `%LOCALAPPDATA%\DungeonMice\data\profiles`.
 The app creates these directories at runtime as the logged-in user. No elevated

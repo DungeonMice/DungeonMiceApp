@@ -29,7 +29,8 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
     private final StackPane viewport = new StackPane(image, loading, status);
     private final TabPane viewTabs = new TabPane();
     private Map<String, Image> currentViews = Collections.emptyMap();
-    private final javafx.beans.property.DoubleProperty progress = new javafx.beans.property.SimpleDoubleProperty(0);
+    private final javafx.beans.property.DoubleProperty progress = new javafx.beans.property.SimpleDoubleProperty(-1);
+    private final javafx.beans.property.StringProperty message = new javafx.beans.property.SimpleStringProperty("Preparando analisis...");
     private volatile boolean closed;
     private boolean playing, pending, ready;
     private int shown, processed, firstCached = 1, total;
@@ -74,18 +75,25 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         viewTabs.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> {
             if (selected != null) { image.setImage(currentViews.get(selected.getUserData().toString())); setZoom(1); }
         });
-        clock.getStyleClass().add("timecode"); getChildren().addAll(viewTabs, viewport, clock, timeline, controls);
+        ProgressBar analysisProgress = new ProgressBar(); analysisProgress.setId("frame-progress"); analysisProgress.getStyleClass().add("frame-analysis-progress"); analysisProgress.setMaxWidth(Double.MAX_VALUE);
+        analysisProgress.setMinHeight(10); analysisProgress.setPrefHeight(10); analysisProgress.setMaxHeight(10); analysisProgress.progressProperty().bind(progress);
+        Label analysisMessage = new Label(); analysisMessage.setId("frame-progress-label"); analysisMessage.setWrapText(true); analysisMessage.setMaxWidth(Double.MAX_VALUE); analysisMessage.textProperty().bind(message);
+        VBox analysis = new VBox(4, analysisProgress, analysisMessage); analysis.setMinHeight(VBox.USE_PREF_SIZE);
+        clock.getStyleClass().add("timecode"); getChildren().addAll(viewTabs, viewport, analysis, clock, timeline, controls);
         request = worker.submit(() -> {
             try {
                 JsonObject info = client.open(source, regions);
                 int count = info.get("total").getAsInt(); double rate = info.get("fps").getAsDouble();
                 if (count <= 0 || !Double.isFinite(rate) || rate <= 0) throw new IllegalArgumentException("Metadatos de video invalidos");
-                Platform.runLater(() -> { if (closed) return; total = count; fps = rate; ready = true; controls.setDisable(false); status.setVisible(false); log.accept("Analisis por frames conectado"); next(); });
+                Platform.runLater(() -> { if (closed) return; total = count; fps = rate; ready = true; progress.set(0); updateMessage("Preparando"); controls.setDisable(false); status.setVisible(false); log.accept("Analisis por frames conectado"); next(); });
             } catch (Exception error) { failed(error); }
         });
     }
-    public void play() { if (closed) return; playing = true; if (ready && !pending) next(); }
-    public void pause() { playing = false; }
+    public void play() { if (closed) return; playing = true; if (ready && !finished) updateMessage("Procesando"); if (ready && !pending) next(); }
+    public void pause() { playing = false; if (ready && !finished) updateMessage("Pausado"); }
+    private void updateMessage(String state) {
+        message.set(state + (total > 0 ? " - " + processed + "/" + total + " frames (" + (int) Math.round(Math.max(0, progress.get()) * 100) + "%)" : ""));
+    }
     public void next() { if (!ready || pending || closed) return; fetch(shown < processed ? shown + 1 : -1); }
     public void seek(int index) {
         pause(); if (!ready || pending || closed || index == shown) return;
@@ -105,10 +113,11 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
                 Platform.runLater(() -> {
                     if (closed) return;
                     pending = false; loading.setVisible(false);
-                    if (frame == null) { playing = false; progress.set(1); status.setText("Analisis completado"); status.setVisible(true); log.accept("Analisis por frames completado: " + processed + " frames"); finish(null); return; }
+                    if (frame == null) { playing = false; progress.set(1); updateMessage("Completado"); status.setText("Analisis completado"); status.setVisible(true); log.accept("Analisis por frames completado: " + processed + " frames"); finish(null); return; }
                     shown = frame.metadata.get("index").getAsInt();
                     processed = Math.max(processed, shown);
-                    progress.set((double) processed / total);
+                    progress.set(Math.min(1, (double) processed / total));
+                    if (!finished) updateMessage(playing ? "Procesando" : "Pausado");
                     // Server exposes its exact byte/count-limited cache floor in each packet.
                     firstCached = frame.metadata.has("firstCached") ? frame.metadata.get("firstCached").getAsInt() : Math.max(1, processed - 119);
                     currentViews = decoded;
@@ -133,12 +142,13 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         });
     }
     private void failed(Exception error) {
-        Platform.runLater(() -> { if (closed) return; pending = false; playing = false; loading.setVisible(false); status.setText(error.getMessage()); status.setVisible(true); log.accept("Error de analisis por frames: " + error.getMessage()); finish(error); });
+        Platform.runLater(() -> { if (closed) return; pending = false; playing = false; if (progress.get() < 0) progress.set(0); message.set("Error de analisis: " + error.getMessage()); loading.setVisible(false); status.setText(error.getMessage()); status.setVisible(true); log.accept("Error de analisis por frames: " + error.getMessage()); finish(error); });
     }
     private static Button button(String text, String id, String tooltip, Runnable action) {
         Button button = new Button(text); button.setId(id); button.getStyleClass().add("icon-button"); button.setTooltip(new Tooltip(tooltip)); button.setAccessibleText(tooltip); button.setOnAction(event -> action.run()); return button;
     }
     public javafx.beans.property.ReadOnlyDoubleProperty progressProperty() { return progress; }
+    public javafx.beans.property.ReadOnlyStringProperty messageProperty() { return message; }
     public void setZoom(double value) {
         zoom = Math.max(1, Math.min(5, value)); image.setScaleX(zoom); image.setScaleY(zoom);
         if (zoom == 1) { image.setTranslateX(0); image.setTranslateY(0); } else clampPan();
