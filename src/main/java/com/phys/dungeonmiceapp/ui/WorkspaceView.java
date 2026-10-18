@@ -71,6 +71,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private CompletableFuture<Void> frameRelease = CompletableFuture.completedFuture(null);
     private long frameGeneration;
     private Runnable restoreOriginal;
+    private Runnable restoreLogReview;
     private String frameToken = System.getProperty("dungeonmice.python.token", "");
     private final javafx.beans.property.BooleanProperty processingBusy = new javafx.beans.property.SimpleBooleanProperty(false);
     private String pythonAddress = System.getProperty("dungeonmice.python.url", "http://127.0.0.1:8765");
@@ -439,8 +440,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         File file = chooser.showOpenDialog(stage); if (file != null) previewFile(file, accepted);
     }
 
-    private void previewFile(File file, Consumer<File> accepted) { previewFile(file, accepted, Double.NaN); }
-    private void previewFile(File file, Consumer<File> accepted, double seconds) {
+    private void previewFile(File file, Consumer<File> accepted) {
         Stage dialog = new Stage(); dialog.initOwner(stage); dialog.initModality(Modality.WINDOW_MODAL); dialog.setTitle(file.getName());
         PlaybackPane preview = new PlaybackPane(true, text -> {});
         Label state = new Label("Preparando vista previa..."); state.setWrapText(true);
@@ -451,7 +451,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         Scene scene = new Scene(content, 800, 520); scene.getStylesheets().add(getClass().getResource("/styles/workspace.css").toExternalForm()); dialog.setScene(scene);
         dialog.setOnHidden(e -> { cancelPreparation(preview); preview.close(); }); dialog.show();
         prepareVideo(preview, file, true, ready -> {
-            if (!dialog.isShowing()) return; state.setText(Double.isFinite(seconds) ? "Original: " + file.getName() : file.getName()); preview.open(ready); preview.reviewAt(seconds); use.setDisable(false);
+            if (!dialog.isShowing()) return; state.setText(file.getName()); preview.open(ready); use.setDisable(false);
         }, ex -> { if (dialog.isShowing()) { state.setText("No se pudo generar el previo: " + ex.getMessage()); use.setDisable(false); } });
     }
 
@@ -584,12 +584,38 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     }
     private void reviewLog(Video video, ActivityLog.Entry entry, PlaybackPane player) {
         if (!Double.isFinite(entry.seconds)) return;
+        closeLogReview();
         if (framePlayer != null && selectedVideo != null && selectedVideo.getId().equals(video.getId()) && entry.frame > 0 && framePlayer.reviewFrame(entry.frame)) return;
         if (frameBatch != null && entry.frame > 0 && frameBatch.reviewFrame(video.getId(), entry.frame)) return;
         if (framePlayer != null || frameBatch != null || selectedVideo == null || !selectedVideo.getId().equals(video.getId())) {
             if (framePlayer != null) framePlayer.pause(); if (frameBatch != null) frameBatch.pause();
-            previewFile(MediaFiles.resolve(video.getFilePath()), null, entry.seconds);
+            showLogReview(video, entry, player);
         } else if (player.videoReadyProperty().get()) player.reviewAt(entry.seconds);
+    }
+
+    private void showLogReview(Video video, ActivityLog.Entry entry, PlaybackPane original) {
+        Node current = frameBatch != null ? frameBatch : framePlayer != null ? framePlayer : original;
+        if (!(current.getParent() instanceof BorderPane)) return;
+        BorderPane page = (BorderPane) current.getParent();
+        Label state = new Label(); state.setWrapText(true);
+        PlaybackPane review = newPlayer(false, state::setText);
+        Label title = new Label("Original: " + video.getTitle()); title.setWrapText(true); title.setMinWidth(0); title.setMaxWidth(Double.MAX_VALUE); HBox.setHgrow(title, Priority.ALWAYS);
+        Button back = button(framePlayer != null || frameBatch != null ? "Volver al analisis" : "Volver al video", "outline", this::closeLogReview); back.setId("close-log-review"); back.setMinWidth(Region.USE_PREF_SIZE);
+        HBox toolbar = new HBox(12, title, back); toolbar.setAlignment(Pos.CENTER_LEFT);
+        VBox content = new VBox(10, toolbar, review, state); content.setId("log-review"); content.setPadding(new Insets(12, 16, 16, 16)); content.setMinSize(0, 0); VBox.setVgrow(review, Priority.ALWAYS);
+        restoreLogReview = () -> {
+            cancelPreparation(review); review.close(); players.remove(review);
+            if (page.getCenter() == content) page.setCenter(current);
+        };
+        page.setCenter(content);
+        prepareVideo(review, MediaFiles.resolve(video.getFilePath()), false,
+                file -> { review.open(file); review.reviewAt(entry.seconds); },
+                error -> review.showError("No se pudo abrir el original: " + error.getMessage()));
+    }
+
+    private void closeLogReview() {
+        Runnable restore = restoreLogReview; restoreLogReview = null;
+        if (restore != null) restore.run();
     }
 
     private javafx.util.Duration playerTime() {
@@ -821,6 +847,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     public void pythonUnavailable(String message) { if (closed) return; pythonAvailable.set(false); pythonStatus.set("Procesamiento no disponible"); pythonDetail.set(message); System.err.println("[Python] " + message); }
 
     private void cancelApi() {
+        closeLogReview();
         frameGeneration++;
         if (apiTask != null) { apiTask.cancel(true); apiTask = null; }
         if (frameBatch != null) { frameRelease = frameBatch.closeAsync(); frameBatch = null; }

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$JavaHome = $env:JAVA_HOME,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.0.4',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.0.5',
     [string]$PythonProject,
     [string]$BuildPython,
     [string]$CacheDirectory,

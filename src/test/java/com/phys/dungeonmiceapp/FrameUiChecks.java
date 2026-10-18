@@ -40,6 +40,8 @@ public final class FrameUiChecks extends Application {
             for (JsonElement item : JsonParser.parseString(Files.readString(Paths.get(getParameters().getRaw().get(1)))).getAsJsonArray()) {
                 JsonObject region = item.getAsJsonObject(); if (!region.has("color")) region.addProperty("color", "#00874b"); regions.add(VideoRegion.fromJson(region));
             } VideoRepository.saveRegions(video.getId(), regions); expectedWidth = regions.get(0).getWidth(); expectedHeight = regions.get(0).getHeight();
+            JsonArray priorLogs = new JsonArray(); priorLogs.add(new ActivityLog.Entry(2.0, 60, "Registro de analisis anterior", false).toJson());
+            VideoRepository.saveActivity(Collections.singletonMap(video.getId(), priorLogs));
             workspace = new WorkspaceView(stage); Scene scene = new Scene(workspace, 1440, 900); scene.getStylesheets().add(App.class.getResource("/styles/workspace.css").toExternalForm()); stage.setScene(scene); stage.show();
             ((TextField) workspace.lookup("#login-username")).setText("admin"); ((PasswordField) workspace.lookup("#login-password")).setText("admin123");
             for (Node node : workspace.lookupAll(".button")) if (node instanceof Button && ((Button) node).getText().equals("Iniciar sesi\u00f3n")) ((Button) node).fire();
@@ -90,15 +92,41 @@ public final class FrameUiChecks extends Application {
                                 snapshot("frames-1000x740.png"); Node next = workspace.lookup("#frame-next");
                                 check(next.localToScene(next.getBoundsInLocal()).getMaxY() <= stage.getScene().getHeight(), "Frame controls fit compact window");
                                 Node progressNode = workspace.lookup("#frame-progress"); check(progressNode.localToScene(progressNode.getBoundsInLocal()).getMaxY() <= stage.getScene().getHeight(), "Individual progress fits compact window");
+                                checkInlineReview(() -> {
                                 fire("nav-data"); check(workspace.lookup("#frame-player") == null, "Navigation disposes live frame player"); fire("nav-video");
                                 await(() -> workspace.lookup("#playback-viewport") != null && ((PlaybackPane) workspace.lookup("#playback-viewport").getParent()).videoReadyProperty().get(), () -> {
                                     check(!((Button) workspace.lookup("#python-process")).isDisabled(), "Original playback and frame action restored after navigation"); Platform.exit();
+                                });
                                 });
                             });
                         });
                     });
                 });
             });
+        });
+    }
+    @SuppressWarnings("unchecked")
+    private void checkInlineReview(Runnable after) {
+        FramePlaybackPane analysis = player(); double progress = analysis.progressProperty().get();
+        ListView<ActivityLog.Entry> logs = (ListView<ActivityLog.Entry>) workspace.lookup("#activity-log");
+        logs.scrollTo(0); workspace.applyCss(); workspace.layout();
+        ActivityLog.Entry previous = logs.getItems().stream().filter(entry -> entry.text.equals("Registro de analisis anterior")).findFirst().orElseThrow();
+        ListCell<?> cell = logs.lookupAll(".list-cell").stream().filter(node -> node instanceof ListCell && ((ListCell<?>) node).getItem() == previous).map(node -> (ListCell<?>) node).findFirst().orElseThrow();
+        long windows = javafx.stage.Window.getWindows().stream().filter(javafx.stage.Window::isShowing).count();
+        javafx.event.Event.fireEvent(cell, new javafx.scene.input.MouseEvent(javafx.scene.input.MouseEvent.MOUSE_CLICKED, 4, 4, 4, 4, javafx.scene.input.MouseButton.PRIMARY, 2, false, false, false, false, false, false, false, false, false, true, null));
+        await(() -> {
+            Node viewport = workspace.lookup("#log-review #playback-viewport");
+            if (viewport == null) return false;
+            PlaybackPane review = (PlaybackPane) viewport.getParent();
+            return review.getPlayer() != null && review.getPlayer().getStatus() == javafx.scene.media.MediaPlayer.Status.PAUSED && Math.abs(review.getPlayer().getCurrentTime().toSeconds() - 2.0) < .25;
+        }, () -> {
+            check(javafx.stage.Window.getWindows().stream().filter(javafx.stage.Window::isShowing).count() == windows, "Uncached log opens at its timestamp inside the workspace without another window");
+            check(analysis.progressProperty().get() == progress, "Inline original review does not advance or restart analysis");
+            PlaybackPane review = (PlaybackPane) workspace.lookup("#log-review #playback-viewport").getParent(); DirectPlayer decoder = review.getPlayer();
+            snapshot("inline-log-review-1000x740.png"); fire("close-log-review");
+            check(workspace.lookup("#log-review") == null && workspace.lookup("#frame-player") == analysis, "Back action restores the same paused analysis and cached views");
+            check(decoder.getStatus() == javafx.scene.media.MediaPlayer.Status.DISPOSED, "Closing inline review releases its VLC decoder");
+            after.run();
         });
     }
     private void delay(int millis, Runnable action) { PauseTransition timer = new PauseTransition(Duration.millis(millis)); timer.setOnFinished(event -> safe(action)); timer.play(); }

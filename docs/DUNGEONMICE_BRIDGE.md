@@ -280,8 +280,11 @@ Clearing the log also clears its stored history. Only metadata is persisted.
 The batch inspector follows the currently analyzed video's history. Double-click
 an actual log row to review its time. Cached analysis frames are reviewed without
 advancing the analyzer or lowering its progress. Older/uncached records open a
-paused original-video preview at the saved time, explicitly labeled `Original`;
-this never pretends to reconstruct an evicted annotated frame. The analysis is
+paused original-video view inside the main workspace at the saved time,
+explicitly labeled `Original`, with **Volver al analisis** to restore the same
+paused session. No extra window is created. Navigation/cancel closes this review
+and its decoder. This review never pretends to reconstruct an evicted annotated
+frame. The analysis is
 paused, not restarted or re-exported. Original playback can also seek directly.
 The Processed library displays the source video's saved history and seeks the
 selected saved MP4 on double-click. Records lacking historical metadata cannot
