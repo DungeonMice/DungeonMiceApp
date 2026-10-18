@@ -10,7 +10,9 @@ unchanged copy of its engine; see `WINDOWS_INSTALLER.md`.
 
 Run Java's `App` from IntelliJ or Maven. Java starts the real Python adapter in
 the background, chooses an available loopback port and connects the UI
-automatically. There is no separate terminal or URL to enter. Processing is
+automatically. There is no separate terminal or URL to enter, and no connection
+settings panel in the UI. The processing panel reports readiness; error details
+remain available in its status tooltip. Processing is
 disabled until the service reports ready; startup errors appear in the Python
 panel without preventing the rest of the application from opening.
 
@@ -63,9 +65,8 @@ For a different environment or preset:
 & F:\JavaApps\DungeonMiceApp\scripts\start-dungeonmice-api.ps1 -PythonPath C:\my-venv\Scripts\python.exe -ConfigPath F:\JavaApps\DungeonMice\src\CrossMaze_control_s1.json
 ```
 
-For manual/external mode, set Java's VM option
-`-Ddungeonmice.python.url=http://127.0.0.1:8765`, or disable automatic startup with
-`-Ddungeonmice.python.autostart=false` and enter the URL in the interface. Java
+For development-only manual/external mode, set Java's VM option
+`-Ddungeonmice.python.url=http://127.0.0.1:8765`. There is no editable URL in the UI. Java
 will not start or shut down that external service. Do not run the old echo
 example server on the same port.
 

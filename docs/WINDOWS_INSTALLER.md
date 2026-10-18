@@ -60,6 +60,11 @@ processing, all three views, bounded cache, lifecycle, missing-payload failure,
 unchanged original video and no writes to the installation tree. Use
 `-Experiment CrossMaze -VideoDirectory 'C:\path\to\CrossMaze'` for the other engine.
 
+The default build version is 1.0.3; use `-Version` for a subsequent release.
+The installer uses the existing yellow mouse logo on its welcome/completion
+pages and header. Its square artwork keeps its aspect ratio within the portrait
+wizard area; the same mouse icon remains on the setup EXE and shortcuts.
+
 ## Per-User Data
 
 Default database: `%LOCALAPPDATA%\DungeonMice\data\database.enc`.

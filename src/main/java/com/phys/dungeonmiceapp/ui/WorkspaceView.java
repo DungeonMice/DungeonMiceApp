@@ -71,9 +71,10 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private Runnable restoreOriginal;
     private String frameToken = System.getProperty("dungeonmice.python.token", "");
     private final javafx.beans.property.BooleanProperty processingBusy = new javafx.beans.property.SimpleBooleanProperty(false);
-    private final TextField pythonAddress = new TextField(System.getProperty("dungeonmice.python.url", "http://127.0.0.1:8765"));
+    private String pythonAddress = System.getProperty("dungeonmice.python.url", "http://127.0.0.1:8765");
     private final javafx.beans.property.BooleanProperty pythonAvailable = new javafx.beans.property.SimpleBooleanProperty(true);
     private final javafx.beans.property.StringProperty pythonStatus = new javafx.beans.property.SimpleStringProperty("");
+    private final javafx.beans.property.StringProperty pythonDetail = new javafx.beans.property.SimpleStringProperty("");
     private final javafx.animation.PauseTransition directoryDelay = new javafx.animation.PauseTransition(javafx.util.Duration.millis(350));
     private ListView<File> projectFiles;
     private Label directoryMessage;
@@ -549,9 +550,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private VBox pythonPanel(ComboBox<Video> choices, PlaybackPane player, RegionEditor regions) {
         final String paneProject = selectedProject.getId();
         VBox panel = sidePanel("Procesamiento"); panel.setId("processing-panel"); panel.setMinHeight(VBox.USE_PREF_SIZE);
-        pythonAddress.setId("python-api-url");
-        pythonAddress.setTooltip(new Tooltip("Direccion de la API local de Python"));
-        Label connection = new Label(); connection.textProperty().bind(javafx.beans.binding.Bindings.when(pythonStatus.isEmpty()).then("Servidor local").otherwise(pythonStatus)); connection.setWrapText(true); connection.getStyleClass().add("muted");
+        Label connection = new Label(); connection.textProperty().bind(javafx.beans.binding.Bindings.when(pythonStatus.isEmpty()).then("Listo para procesar").otherwise(pythonStatus)); connection.setWrapText(true); connection.getStyleClass().add("muted");
+        Tooltip detail = new Tooltip(); detail.textProperty().bind(pythonDetail); connection.setTooltip(detail);
         connection.setMaxWidth(Double.MAX_VALUE); connection.setId("python-connection-status");
         Label status = new Label(); status.setId("processing-status"); status.setWrapText(true); status.setMaxWidth(Double.MAX_VALUE);
         javafx.beans.property.BooleanProperty busy = new javafx.beans.property.SimpleBooleanProperty(false);
@@ -581,7 +581,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             try {
                 java.nio.file.Path path = destination.getCanonicalFile().toPath();
                 if (path.startsWith(MediaFiles.storage().toRealPath())) throw new IOException("Guarda el resultado fuera del directorio de la aplicacion.");
-                PythonVideoClient client = new PythonVideoClient(java.net.URI.create(pythonAddress.getText().trim()));
+                PythonVideoClient client = new PythonVideoClient(java.net.URI.create(pythonAddress.trim()));
                 String projectId = selectedProject.getId();
                 Task<java.nio.file.Path> task = new Task<java.nio.file.Path>() {
                     @Override protected java.nio.file.Path call() throws Exception {
@@ -636,7 +636,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 DirectoryChooser chooser = new DirectoryChooser(); chooser.setTitle("Carpeta para los videos procesados");
                 File folder = chooser.showDialog(stage); if (folder == null) return;
                 List<VideoBatch.Item> plan = VideoBatch.plan(originals, snapshots, folder.toPath(), MediaFiles.storage());
-                PythonVideoClient client = new PythonVideoClient(java.net.URI.create(pythonAddress.getText().trim()));
+                PythonVideoClient client = new PythonVideoClient(java.net.URI.create(pythonAddress.trim()));
                 String ownerId = SessionManager.getCurrentUser().getId();
                 Task<Integer> task = new Task<Integer>() {
                     @Override protected Integer call() throws Exception {
@@ -689,7 +689,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 regions.requestRegions();
                 if (!confirm("Procesar todos los videos", "Se aplicaran las regiones actuales a todos los videos del proyecto, reemplazando sus regiones individuales. Deben tener la misma resolucion y encuadre. Se analizaran por frames, sin exportar MP4. Continuar?")) return;
                 // Validate connection before changing the saved region templates.
-                java.net.URI address = java.net.URI.create(pythonAddress.getText().trim());
+                java.net.URI address = java.net.URI.create(pythonAddress.trim());
                 new com.phys.dungeonmiceapp.api.PythonFrameClient(address, frameToken);
                 VideoRepository.applyRegionsToGroup(paneProject, source.getId(), true);
                 List<Video> videos = VideoRepository.findByGroup(paneProject);
@@ -722,7 +722,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 frameRelease.whenComplete((ignored, failure) -> Platform.runLater(() -> {
                     if (!closed && frameBatch == batch) {
                         if (failure == null) batch.start();
-                        else { cancelApi(); status.setText("No se pudo liberar la sesion anterior. Reinicia la conexion."); }
+                        else { cancelApi(); status.setText("No se pudo liberar la sesion anterior. Reinicia la aplicacion."); }
                     }
                 }));
             } catch (RuntimeException ex) { error(ex); }
@@ -734,7 +734,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             Video source = choices.getValue(); if (source == null || apiTask != null) return;
             try {
                 JsonArray payload = regions.requestRegions();
-                com.phys.dungeonmiceapp.api.PythonFrameClient client = new com.phys.dungeonmiceapp.api.PythonFrameClient(java.net.URI.create(pythonAddress.getText().trim()), frameToken);
+                com.phys.dungeonmiceapp.api.PythonFrameClient client = new com.phys.dungeonmiceapp.api.PythonFrameClient(java.net.URI.create(pythonAddress.trim()), frameToken);
                 BorderPane page = (BorderPane) player.getParent();
                 cancelPreparation(player); player.close(); busy.set(true); progress.setProgress(-1); status.setText("Preparando analisis por frames...");
                 regions.showAnalysisStatus();
@@ -742,7 +742,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 long generation = frameGeneration;
                 frameRelease.whenComplete((ignored, failure) -> Platform.runLater(() -> {
                     if (closed || frameGeneration != generation || !busy.get() || restoreOriginal == null) return;
-                    if (failure != null) { cancelApi(); status.setText("No se pudo liberar la sesion anterior. Reinicia la conexion."); return; }
+                    if (failure != null) { cancelApi(); status.setText("No se pudo liberar la sesion anterior. Reinicia la aplicacion."); return; }
                     framePlayer = new FramePlaybackPane(client, MediaFiles.resolve(source.getFilePath()).toPath(), payload,
                             text -> logVideo(source, "00:00:00.000", text, text.startsWith("Error")));
                     page.setCenter(framePlayer);
@@ -752,7 +752,6 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         });
         frames.setId("python-process"); frames.setMinWidth(0); frames.setMaxWidth(Double.MAX_VALUE);
         frames.disableProperty().bind(choices.valueProperty().isNull().or(busy).or(pythonAvailable.not()));
-        pythonAddress.disableProperty().bind(busy);
         choices.disableProperty().bind(busy);
         busy.addListener((obs, old, value) -> { processingBusy.set(value); regions.setLocked(value); });
         Button cancel = button("Cancelar", "outline", this::cancelApi); cancel.setId("python-cancel"); cancel.disableProperty().bind(busy.not());
@@ -760,16 +759,15 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         for (Button button : new Button[]{process, processAll, cancel, view}) { button.setMinWidth(0); button.setMaxWidth(Double.MAX_VALUE); }
         cancel.visibleProperty().bind(busy); cancel.managedProperty().bind(busy);
         view.visibleProperty().bind(busy.not()); view.managedProperty().bind(busy.not());
-        TitledPane advanced = new TitledPane("Conexion", pythonAddress); advanced.setExpanded(false); advanced.getStyleClass().add("connection-settings");
         HBox actions = new HBox(6, process, processAll); HBox.setHgrow(process, Priority.ALWAYS); HBox.setHgrow(processAll, Priority.ALWAYS);
         TitledPane export = new TitledPane("Exportacion MP4 (opcional)", actions); export.setId("python-export-options"); export.setExpanded(false); export.getStyleClass().add("connection-settings"); export.disableProperty().bind(busy);
-        panel.getChildren().addAll(connection, progress, status, frames, allFrames, cancel, view, export, advanced); return panel;
+        panel.getChildren().addAll(connection, progress, status, frames, allFrames, cancel, view, export); return panel;
     }
 
-    public void pythonConnecting() { pythonAvailable.set(false); pythonStatus.set("Conectando..."); pythonAddress.setEditable(false); }
-    public void pythonConnected(String url) { if (closed) return; pythonAddress.setText(url); pythonAvailable.set(true); pythonStatus.set("Conectado"); }
+    public void pythonConnecting() { pythonAvailable.set(false); pythonStatus.set("Preparando procesamiento..."); pythonDetail.set(""); }
+    public void pythonConnected(String url) { if (closed) return; pythonAddress = url; pythonAvailable.set(true); pythonStatus.set("Listo para procesar"); pythonDetail.set(""); }
     public void pythonConnected(String url, String token) { frameToken = token; pythonConnected(url); }
-    public void pythonUnavailable(String message) { if (closed) return; pythonAvailable.set(false); pythonStatus.set("Python no disponible"); pythonAddress.setTooltip(new Tooltip(message)); System.err.println("[Python] " + message); }
+    public void pythonUnavailable(String message) { if (closed) return; pythonAvailable.set(false); pythonStatus.set("Procesamiento no disponible"); pythonDetail.set(message); System.err.println("[Python] " + message); }
 
     private void cancelApi() {
         frameGeneration++;

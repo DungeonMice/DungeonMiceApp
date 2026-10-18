@@ -2,6 +2,7 @@
 ; Build scripts/build-windows.ps1 first; this installer requires its Python backend.
 #define AppFolder SourcePath + "..\dist\DungeonMice"
 #define AppIcon SourcePath + "..\src\main\resources\images\dungeon-mouse.ico"
+#define AppLogo SourcePath + "..\src\main\resources\images\dungeon-mouse-yellow.png"
 #define VlcInstaller SourcePath + "..\dist\vlc-3.0.23-win64.exe"
 #if !FileExists(VlcInstaller)
   #undef VlcInstaller
@@ -20,6 +21,10 @@ DefaultGroupName=Dungeon Mice
 OutputDir=..\dist\installer
 OutputBaseFilename=DungeonMiceSetup
 SetupIconFile={#AppIcon}
+WizardImageFile={#AppLogo}
+WizardSmallImageFile={#AppLogo}
+DisableWelcomePage=no
+DisableFinishedPage=no
 UninstallDisplayIcon={app}\DungeonMice.exe
 UninstallDisplayName=Dungeon Mice
 Uninstallable=yes
@@ -57,6 +62,22 @@ Filename: "{app}\DungeonMice.exe"; Description: "Abrir Dungeon Mice"; WorkingDir
 ; No UninstallDelete: never remove user databases, profile photos or external videos.
 
 [Code]
+procedure CenterBrand(Image: TBitmapImage);
+var Padding, Size: Integer;
+begin
+  { Fit the square logo inside the portrait wizard area without distortion. }
+  Padding := ScaleX(12);
+  Size := Image.Width - 2 * Padding;
+  Image.SetBounds(Image.Left + Padding, Image.Top + (Image.Height - Size) div 2, Size, Size);
+  Image.Stretch := True;
+end;
+
+procedure InitializeWizard;
+begin
+  CenterBrand(WizardForm.WizardBitmapImage);
+  CenterBrand(WizardForm.WizardBitmapImage2);
+end;
+
 function NeedsVCRuntime: Boolean;
 var Installed, Major, Minor, Build: Cardinal;
 begin

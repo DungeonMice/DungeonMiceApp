@@ -53,6 +53,8 @@ public final class FrameUiChecks extends Application {
     private ImageView image() { return (ImageView) workspace.lookup("#analysis-frame"); }
     private FramePlaybackPane player() { return (FramePlaybackPane) workspace.lookup("#frame-player"); }
     private void openFrames() {
+        check(workspace.lookup("#python-api-url") == null, "Automatic frame connection has no editable endpoint");
+        check(((Label) workspace.lookup("#python-connection-status")).getText().equals("Listo para procesar"), "Internal connection reports processing readiness");
         check(!((TitledPane) workspace.lookup("#python-export-options")).isExpanded(), "MP4 export is not the primary analysis workflow");
         check(((Button) workspace.lookup("#python-process")).getText().equals("Procesar por frames"), "Main processing action explicitly selects the native frame engine");
         fire("python-process");

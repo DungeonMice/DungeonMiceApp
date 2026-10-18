@@ -145,7 +145,8 @@ public final class FunctionalChecks extends Application {
             Slider volume = (Slider) playback.lookup("#playback-volume"); volume.setValue(.27);
             check(Math.abs(playback.getPlayer().getVolume() - .27) < .001, "Volume changes applied");
             snapshot(workspace, "video-functional.png");
-            check(workspace.lookup("#python-api-url") != null, "Python API endpoint control exists");
+            check(workspace.lookup("#python-api-url") == null, "Python endpoint cannot be edited from the UI");
+            check(workspace.lookupAll(".titled-pane").stream().noneMatch(node -> ((TitledPane) node).getText().equals("Conexion")), "Connection settings panel is absent");
             check(!((Button) workspace.lookup("#python-process")).isDisabled(), "Python processing enabled for selected video");
             check(((Button) workspace.lookup("#python-result")).isDisabled(), "Result unavailable before processing");
             stage.setWidth(1000); stage.setHeight(740);
