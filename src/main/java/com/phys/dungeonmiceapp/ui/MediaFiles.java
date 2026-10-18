@@ -67,7 +67,9 @@ public final class MediaFiles {
 
     public static String copyPhoto(File source) throws IOException {
         if (source == null) return "";
-        Path folder = storage().resolve("data/profiles"); Files.createDirectories(folder);
+        Path base = System.getProperty("dungeonmice.storage") == null
+                ? com.phys.dungeonmiceapp.config.AppPaths.userDataDirectory() : storage();
+        Path folder = base.resolve("data/profiles"); Files.createDirectories(folder);
         String name = source.getName();
         String extension = name.lastIndexOf('.') < 0 ? ".png" : name.substring(name.lastIndexOf('.'));
         Path destination = folder.resolve(UUID.randomUUID() + extension);

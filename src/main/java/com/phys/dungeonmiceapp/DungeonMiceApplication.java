@@ -18,7 +18,7 @@ public final class DungeonMiceApplication extends Application {
             DatabaseManager.connect();
         } catch (RuntimeException e) {
             javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR,
-                    "No se pudo abrir la base de datos. Comprueba DB_MASTER_PASSWORD y el archivo data/database.enc.");
+                    "No se pudo abrir la base de datos. Comprueba DB_MASTER_PASSWORD y el archivo:\n" + DatabaseManager.databasePath());
             alert.showAndWait(); javafx.application.Platform.exit(); return;
         }
         view = new WorkspaceView(stage);

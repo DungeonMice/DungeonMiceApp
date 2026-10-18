@@ -1,6 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Dungeon Mice" type="Application" factoryName="Application">
     <option name="MAIN_CLASS_NAME" value="com.phys.dungeonmiceapp.App" />
+    <option name="VM_PARAMETERS" value="-Ddungeonmice.database=&quot;$PROJECT_DIR$/data/database.enc&quot; -Ddungeonmice.storage=&quot;$PROJECT_DIR$&quot;" />
     <module name="DungeonMiceApp" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <method v="2">

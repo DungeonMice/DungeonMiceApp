@@ -26,7 +26,7 @@ public class DatabaseManager {
     // Configuración
     // -------------------------------------------------------------------------
 
-    private static final String DB_FILE_PATH = System.getProperty("dungeonmice.database", "data/database.enc");
+    private static final Path DB_FILE_PATH = com.phys.dungeonmiceapp.config.AppPaths.databaseFile();
     private static final String MASTER_PASSWORD = System.getenv()
             .getOrDefault("DB_MASTER_PASSWORD", "changeme_load_from_env");
 
@@ -51,9 +51,12 @@ public class DatabaseManager {
     // Ciclo de vida
     // -------------------------------------------------------------------------
 
+    public static Path databasePath() { return DB_FILE_PATH; }
+
     public static void connect() {
-        File dbFile = new File(DB_FILE_PATH);
-        dbFile.getParentFile().mkdirs();
+        File dbFile = DB_FILE_PATH.toFile();
+        try { Files.createDirectories(DB_FILE_PATH.getParent()); }
+        catch (java.io.IOException e) { throw new RuntimeException("No se pudo crear el directorio de datos: " + DB_FILE_PATH.getParent(), e); }
 
         if (dbFile.exists()) {
             try {
@@ -91,7 +94,7 @@ public class DatabaseManager {
 
     public static void persist() {
         try {
-            encryptAndSave(inMemoryDb, new File(DB_FILE_PATH));
+            encryptAndSave(inMemoryDb, DB_FILE_PATH.toFile());
         } catch (Exception e) {
             throw new RuntimeException("[DatabaseManager] Error al persistir la base de datos.", e);
         }
