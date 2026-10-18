@@ -40,6 +40,7 @@ public final class DirectPlayer {
     private RuntimeException error;
     private Runnable onReady, onError, onEnd;
     private boolean ready;
+    private volatile boolean pollPending;
 
     public DirectPlayer(File source, ImageView target) {
         this.source = source; this.target = target;
@@ -48,6 +49,14 @@ public final class DirectPlayer {
         }));
         ticker = new Timeline(new KeyFrame(Duration.millis(100), e -> {
             if (!disposed) {
+                // Paused seeks do not reliably emit VLC timeChanged callbacks.
+                if (state == Status.PAUSED && !pollPending) {
+                    pollPending = true;
+                    commands.execute(() -> {
+                        try { if (!disposed && engine != null) position = Math.max(0, engine.status().time()); }
+                        finally { pollPending = false; }
+                    });
+                }
                 time.set(Duration.millis(position)); checkReady();
                 if (!ready && error == null && System.nanoTime() - openingStarted > TimeUnit.SECONDS.toNanos(30))
                     fail(new IllegalStateException("El video no respondio al abrirse: " + source));

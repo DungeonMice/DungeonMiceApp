@@ -32,7 +32,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
     private final Label clock = new Label("00:00:00.000");
     private final Slider timeline = new Slider();
     private final Slider volume = new Slider(0, 1, .5);
-    private final HBox playbackControls = new HBox(6);
+    private final FlowPane playbackControls = new FlowPane(6, 6);
     private final Consumer<String> log;
     private DirectPlayer player;
     private long generation;
@@ -77,7 +77,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         volume.setId("playback-volume");
         volume.setTooltip(new Tooltip("Volumen"));
         volume.valueProperty().addListener((obs, old, value) -> { if (player != null) player.setVolume(value.doubleValue()); });
-        HBox buttons = playbackControls;
+        FlowPane buttons = playbackControls;
         buttons.setDisable(true);
         buttons.setAlignment(Pos.CENTER_LEFT); buttons.getStyleClass().add("playback-toolbar");
         buttons.getChildren().addAll(control("back", "Retroceder 5 segundos", () -> skip(-5)),
@@ -87,8 +87,8 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
                 control("stop", "Detener", () -> { if (player != null) { player.stop(); log.accept("Reproduccion detenida"); } }),
                 control("next", "Fotograma siguiente (1/30 s)", () -> step(1)),
                 control("last", "Ir al final", () -> { if (player != null) seek(player.getTotalDuration().toSeconds()); }));
-        Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS);
-        buttons.getChildren().addAll(spacer, control("volume", "Silenciar / activar sonido", () -> { if (player != null) player.setMute(!player.isMute()); }), volume);
+        HBox audio = new HBox(6, control("volume", "Silenciar / activar sonido", () -> { if (player != null) player.setMute(!player.isMute()); }), volume); audio.setAlignment(Pos.CENTER_LEFT);
+        buttons.getChildren().add(audio);
         if (compact) {
             buttons.getChildren().remove(2); // Frame stepping remains in the full player.
             buttons.getChildren().remove(5);
@@ -152,7 +152,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
                 priming = true; loaded.setMute(true); loaded.play();
                 javafx.animation.PauseTransition firstFrame = new javafx.animation.PauseTransition(Duration.millis(180));
                 firstFrame.setOnFinished(e -> {
-                    if (token == generation && priming) { priming = false; loaded.pause(); loaded.setMute(false); }
+                    if (token == generation && priming) { priming = false; loaded.pause(); loaded.setMute(false); if (Double.isFinite(reviewTime)) { seek(reviewTime); reviewTime = Double.NaN; } }
                 });
                 firstFrame.play();
             });
@@ -174,6 +174,12 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
         if (player != null && Double.isFinite(seconds)) player.seek(Duration.seconds(Math.max(0, Math.min(seconds, timeline.getMax()))));
     }
     private void skip(double seconds) { if (player != null) seek(player.getCurrentTime().toSeconds() + seconds); }
+    private double reviewTime = Double.NaN;
+    public void reviewAt(double seconds) {
+        if (!Double.isFinite(seconds) || seconds < 0) return;
+        if (!videoReady.get() || priming) reviewTime = seconds;
+        else { pause(); seek(seconds); }
+    }
     private void step(int direction) { pause(); skip(direction / 30.0); }
     public void resetZoom() { zoom = 1; panX = panY = 0; applyTransform(); }
     public void setZoom(double scale) { zoom = Math.max(1, Math.min(5, scale)); clampPan(); }
@@ -244,7 +250,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
 
     @Override public void close() {
         regionMove = null; regionClick = null; radiusGuide = Collections.emptyList();
-        generation++; priming = false;
+        generation++; priming = false; reviewTime = Double.NaN;
         if (pendingOpen != null) { pendingOpen.stop(); pendingOpen = null; }
         DirectPlayer previous = player; player = null;
         videoReady.set(false); view.setImage(null); view.setViewport(null); drawRegions();

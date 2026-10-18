@@ -41,10 +41,23 @@ public final class ProcessedVideoChecks extends Application {
             check(ProcessedVideoRepository.findByProject(group.getId()).size() == 2, "External result paths indexed per project");
             check(!Files.exists(sandbox.resolve("app/videos")) && !Files.exists(sandbox.resolve("app/processed")), "Library creates no video copies");
             regions.get(0).getAsJsonObject().addProperty("id", "changed"); check(latest.getRegions().get(0).getAsJsonObject().get("id").getAsString().equals("norte"), "Analysis regions are an immutable snapshot");
+            JsonArray entries = new JsonArray(); entries.add(new ActivityLog.Entry(2.0, 60, "norte: entrada", false).toJson());
+            check(new ActivityLog.Entry(65.125, 1954, "entrada", false).time.equals("00:01:05.125"), "Log timecodes display minutes, seconds and milliseconds");
+            javafx.collections.ObservableList<ActivityLog.Entry> repeated = javafx.collections.FXCollections.observableArrayList();
+            ActivityLog.append(repeated, new ActivityLog.Entry(1, 30, "entrada", false)); ActivityLog.append(repeated, new ActivityLog.Entry(2, 60, "entrada", false));
+            check(repeated.size() == 2, "Repeated events at different times are not discarded");
+            VideoRepository.saveActivity(Collections.singletonMap(source.getId(), entries));
+            entries.get(0).getAsJsonObject().addProperty("seconds", 999);
+            check(VideoRepository.findActivity(source.getId()).get(0).getAsJsonObject().get("seconds").getAsDouble() == 2.0, "Saved log timestamps are independent copies");
             User other = UserRepository.register("other-results", "password", "user", "", "", ""); SessionManager.setCurrentUser(other);
             rejected(() -> ProcessedVideoRepository.findByProject(group.getId()), "Other user cannot read result library");
             rejected(() -> ProcessedVideoRepository.remove(group.getId(), latest.getId()), "Other user cannot remove results"); SessionManager.setCurrentUser(admin);
+            SessionManager.setCurrentUser(other);
+            rejected(() -> VideoRepository.findActivity(source.getId()), "Other user cannot read video logs");
+            rejected(() -> VideoRepository.saveActivity(Collections.singletonMap(source.getId(), new JsonArray())), "Other user cannot overwrite video logs");
+            SessionManager.setCurrentUser(admin);
             DatabaseManager.connect(); check(ProcessedVideoRepository.findByProject(group.getId()).get(0).getId().equals(latest.getId()), "Results survive encrypted database reload in newest-first order");
+            check(VideoRepository.findActivity(source.getId()).get(0).getAsJsonObject().get("frame").getAsInt() == 60, "Frame and timestamp survive encrypted database reload");
             workspace = new WorkspaceView(stage); Scene scene = new Scene(workspace, 1440, 900); scene.getStylesheets().add(App.class.getResource("/styles/workspace.css").toExternalForm()); stage.setScene(scene); stage.show();
             ((TextField) workspace.lookup("#login-username")).setText("admin"); ((PasswordField) workspace.lookup("#login-password")).setText("admin123"); fireText("Iniciar sesi\u00f3n"); css(); fire("nav-processed");
             awaitReady(this::checkLibrary);
@@ -55,7 +68,19 @@ public final class ProcessedVideoChecks extends Application {
     private void checkLibrary() {
         check(results().getItems().size() == 2 && results().getSelectionModel().getSelectedItem().getId().equals(latest.getId()), "Processed page selects latest result");
         check(!((ProgressIndicator) player().lookup("#video-loading")).isVisible(), "Video loading indicator hides when ready"); snapshot("processed-1440x900.png");
-        results().getSelectionModel().select(1); awaitReady(this::navigateBack);
+        @SuppressWarnings("unchecked") ListView<ActivityLog.Entry> logs = (ListView<ActivityLog.Entry>) workspace.lookup("#activity-log");
+        check(logs != null && logs.getItems().get(0).time.equals("00:00:02.000") && logs.getItems().get(0).frame == 60, "Processed results display their source's saved time and frame");
+        css();
+        ListCell<?> cell = logs.lookupAll(".list-cell").stream().filter(node -> node instanceof ListCell && ((ListCell<?>) node).getItem() == logs.getItems().get(0)).map(node -> (ListCell<?>) node).findFirst().orElseThrow();
+        javafx.event.Event.fireEvent(cell, new javafx.scene.input.MouseEvent(javafx.scene.input.MouseEvent.MOUSE_CLICKED, 4, 4, 4, 4, javafx.scene.input.MouseButton.PRIMARY, 2, false, false, false, false, false, false, false, false, false, true, null));
+        await(() -> Math.abs(player().getPlayer().getCurrentTime().toSeconds() - 2) < .3, () -> {
+            check(player().getPlayer().getStatus() == javafx.scene.media.MediaPlayer.Status.PAUSED, "Double-clicking a processed log seeks to its timestamp and stays paused");
+            player().open(second.toFile()); player().reviewAt(1.25);
+            await(() -> player().getPlayer().getStatus() == javafx.scene.media.MediaPlayer.Status.PAUSED && Math.abs(player().getPlayer().getCurrentTime().toSeconds() - 1.25) < .25, () -> {
+                check(true, "Review requested while opening is applied after the first frame, without jumping back to zero");
+                results().getSelectionModel().select(1); awaitReady(this::navigateBack);
+            });
+        });
     }
     private void navigateBack() {
         check(results().getSelectionModel().getSelectedItem().getId().equals(older.getId()), "Older result can be selected and played");
@@ -91,6 +116,8 @@ public final class ProcessedVideoChecks extends Application {
     private void checkMissingAndDeletion() {
         try {
             check(results().getSelectionModel().getSelectedItem().getId().equals(latest.getId()), "View result reopens the latest stored output"); snapshot("processed-1000x740.png");
+            Node volume = player().lookup("#playback-volume");
+            check(volume.localToScene(volume.getBoundsInLocal()).getMaxX() <= player().localToScene(player().getBoundsInLocal()).getMaxX(), "Processed logs do not clip player volume controls in a compact window");
             fire("nav-data");
             await(() -> { try { Files.deleteIfExists(second); return true; } catch (java.io.IOException busy) { return false; } }, this::finishDeleted);
         } catch (Throwable error) { fail(error); }

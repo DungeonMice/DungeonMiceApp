@@ -100,6 +100,31 @@ public class VideoRepository {
         return video;
     }
 
+    public static JsonArray findActivity(String videoId) {
+        JsonObject video = ownedVideo(videoId);
+        return video.has("activity") ? video.getAsJsonArray("activity").deepCopy() : new JsonArray();
+    }
+
+    public static void saveActivity(java.util.Map<String, JsonArray> histories) {
+        java.util.Map<JsonObject, com.google.gson.JsonElement> previous = new java.util.LinkedHashMap<>();
+        java.util.Map<JsonObject, JsonArray> updates = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, JsonArray> history : histories.entrySet()) {
+            JsonObject video = ownedVideo(history.getKey());
+            if (history.getValue().size() > 2000) throw new IllegalArgumentException("Demasiados registros por video");
+            for (com.google.gson.JsonElement item : history.getValue()) {
+                JsonObject entry = item.getAsJsonObject(); double seconds = entry.get("seconds").getAsDouble();
+                if (!Double.isFinite(seconds) || seconds < 0 || entry.get("frame").getAsInt() < 0 || entry.get("text").getAsString().length() > 4000) throw new IllegalArgumentException("Registro invalido");
+            }
+            previous.put(video, video.get("activity")); updates.put(video, history.getValue().deepCopy());
+        }
+        if (updates.isEmpty()) return;
+        updates.forEach((video, entries) -> video.add("activity", entries));
+        try { DatabaseManager.persist(); }
+        catch (RuntimeException error) {
+            previous.forEach((video, old) -> { if (old == null) video.remove("activity"); else video.add("activity", old); }); throw error;
+        }
+    }
+
     public static int applyRegionsToGroup(String groupId, String sourceId, boolean replaceExisting) {
         JsonObject source = ownedVideo(sourceId);
         if (!groupId.equals(source.get("groupId").getAsString())) throw new IllegalArgumentException("Video de otro proyecto.");

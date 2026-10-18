@@ -71,6 +71,11 @@ public final class FrameUiChecks extends Application {
                         check(player().progressProperty().get() == paused, "Pausing main UI stops frame analysis requests");
                         check(((ProgressBar) workspace.lookup("#frame-progress")).getProgress() == paused, "Visible frame progress stays fixed while paused");
                         check(((Label) workspace.lookup("#processing-status")).getText().startsWith("Pausado"), "Sidebar reports the individual analysis state");
+                        ((TabPane) workspace.lookup("#video-inspector")).getSelectionModel().select(1); workspace.applyCss(); workspace.layout();
+                        @SuppressWarnings("unchecked") ListView<ActivityLog.Entry> logs = (ListView<ActivityLog.Entry>) workspace.lookup("#activity-log");
+                        ActivityLog.Entry pause = logs.getItems().stream().filter(entry -> entry.text.equals("Analisis pausado")).reduce((a, b) -> b).orElseThrow();
+                        check(pause.frame > 0 && pause.seconds > 0 && ((Label) workspace.lookup("#frame-clock")).getText().startsWith(pause.time), "Individual frame logs carry native nonzero time and frame, not the disposed player's clock");
+                        check(player().reviewFrame(Math.max(1, pause.frame - 1)), "Saved frame can be reviewed inside the bounded cache");
                         check(ProcessedVideoRepository.findByProject(projectId).isEmpty(), "Live frame analysis never registers a processed MP4");
                         try (java.util.stream.Stream<Path> files = Files.walk(temporary)) { check(files.noneMatch(path -> path.toString().toLowerCase(Locale.ROOT).endsWith(".mp4")), "Primary frame workflow produces no MP4 file"); }
                         catch (java.io.IOException error) { throw new RuntimeException(error); }

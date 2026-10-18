@@ -18,7 +18,8 @@ public final class FrameBatchPane extends BorderPane implements AutoCloseable {
     private final Map<String, JsonArray> regions = new HashMap<>();
     private final URI address;
     private final String token;
-    private final BiConsumer<Video, String> log;
+    private final BiConsumer<Video, ActivityLog.Entry> log;
+    private final java.util.function.Consumer<Video> currentVideo;
     private final DoubleProperty progress = new SimpleDoubleProperty();
     private final StringProperty message = new SimpleStringProperty();
     private final Runnable completed;
@@ -28,11 +29,11 @@ public final class FrameBatchPane extends BorderPane implements AutoCloseable {
     private int index, succeeded, failed;
 
     public FrameBatchPane(List<Video> videos, Map<String, JsonArray> regions, URI address, String token,
-                          BiConsumer<Video, String> log, Runnable completed) {
+                          BiConsumer<Video, ActivityLog.Entry> log, java.util.function.Consumer<Video> currentVideo, Runnable completed) {
         if (videos.isEmpty()) throw new IllegalArgumentException("El proyecto no tiene videos");
         this.videos = new ArrayList<>(videos);
         for (Video video : videos) this.regions.put(video.getId(), Objects.requireNonNull(regions.get(video.getId())).deepCopy());
-        this.address = address; this.token = token; this.log = log; this.completed = completed;
+        this.address = address; this.token = token; this.log = log; this.currentVideo = currentVideo; this.completed = completed;
         setId("frame-batch"); setMinSize(0, 0);
     }
     public ReadOnlyDoubleProperty progressProperty() { return progress; }
@@ -46,6 +47,7 @@ public final class FrameBatchPane extends BorderPane implements AutoCloseable {
             Label summary = new Label(message.get()); summary.setWrapText(true); setCenter(summary); completed.run(); return;
         }
         Video video = videos.get(index);
+        currentVideo.accept(video);
         message.set((index + 1) + "/" + videos.size() + " - " + video.getTitle());
         try {
             current = new FramePlaybackPane(new PythonFrameClient(address, token), MediaFiles.resolve(video.getFilePath()).toPath(),
@@ -58,7 +60,7 @@ public final class FrameBatchPane extends BorderPane implements AutoCloseable {
                 }
             });
             current.setOnFinished(error -> finishedVideo(video, error)); setCenter(current); current.play();
-        } catch (RuntimeException error) { log.accept(video, "Error: " + error.getMessage()); finishedVideo(video, error); }
+        } catch (RuntimeException error) { log.accept(video, new ActivityLog.Entry(0, 0, "Error: " + error.getMessage(), true)); finishedVideo(video, error); }
     }
     private void finishedVideo(Video video, Throwable error) {
         if (closed) return;
@@ -76,6 +78,8 @@ public final class FrameBatchPane extends BorderPane implements AutoCloseable {
         }));
     }
     public void setZoom(double zoom) { if (current != null) current.setZoom(zoom); }
+    public boolean reviewFrame(String videoId, int frame) { return current != null && index < videos.size() && videos.get(index).getId().equals(videoId) && current.reviewFrame(frame); }
+    public void pause() { if (current != null) current.pause(); }
     public CompletableFuture<Void> closeAsync() {
         if (!closed) {
             closed = true;

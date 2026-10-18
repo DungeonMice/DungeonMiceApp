@@ -95,9 +95,9 @@ example server on the same port.
   upload and reports validation errors to Java instead of hiding the reason.
 - The inspector separates **Regiones** and **Registros** into tabs, while the
   processing controls remain visible below. Video opening has an explicit loading
-  indicator. Session logs are searchable, bounded to 200 entries per original,
-  include timecodes, and survive navigation within the workspace. They are not
-  scientific reports and are not persisted after closing the application.
+  indicator. Session logs are searchable, bounded to 2,000 entries per original,
+  include timecodes, and survive navigation and application restarts through
+  encrypted metadata persistence. They are not a replacement for scientific reports.
 - Completed videos open in **Procesados** and remain accessible after switching
   tabs or restarting Java. The encrypted database stores external result paths
   and the original analysis region snapshot, not video data. **Ver resultado**
@@ -265,6 +265,34 @@ MOV, AVI, MP4, MKV and M4V, recursively finds videos, and checks UI dimensions
 against the region metadata instead of assuming CrossMaze's 1280x720 frames.
 
 ## Project-Wide Frame Analysis
+
+### Timestamped Activity
+
+Individual and batch frame analysis now retain the native packet's exact
+`time` (seconds) and one-based frame index alongside each event. They do not use
+the disposed VLC player's clock. Region transitions, pause and completion entries
+display `HH:MM:SS.mmm` and the frame number. Repeated messages at different instants
+are preserved. Each video retains up to 2,000 recent entries in its existing
+encrypted database document, with owner checks and deep-copy isolation. Writes
+are coalesced every 750 ms and flushed on navigation, batch completion and close.
+Clearing the log also clears its stored history. Only metadata is persisted.
+
+The batch inspector follows the currently analyzed video's history. Double-click
+an actual log row to review its time. Cached analysis frames are reviewed without
+advancing the analyzer or lowering its progress. Older/uncached records open a
+paused original-video preview at the saved time, explicitly labeled `Original`;
+this never pretends to reconstruct an evicted annotated frame. The analysis is
+paused, not restarted or re-exported. Original playback can also seek directly.
+The Processed library displays the source video's saved history and seeks the
+selected saved MP4 on double-click. Records lacking historical metadata cannot
+be recovered retroactively; processing again produces correctly timed entries.
+The existing individual and global progress bars remain unchanged.
+
+`ProcessedVideoChecks` verifies persisted times/frames, owner isolation, repeated
+events, timecode formatting and actual paused seeking from a processed log row.
+`FrameUiChecks` checks native individual timestamps and bounded cached review;
+`FrameBatchUiChecks` checks separate nonzero completion times/frames for each
+video in the queue. The original Python engine is not modified.
 
 Project creation/editing now requires choosing **CrossMaze** or **Piscina de
 Morris** from the category dropdown. The database stores stable category values

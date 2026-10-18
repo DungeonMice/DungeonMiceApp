@@ -109,6 +109,14 @@ public final class FrameBatchUiChecks extends Application {
             check(ProcessedVideoRepository.findByProject(project).isEmpty(), "Batch never registers an MP4 export");
             check(!((Button) workspace.lookup("#python-process-all")).isDisabled(), "Batch action unlocked after completion");
             check(((ProgressBar) workspace.lookup("#processing-progress")).getProgress() == 1, "Global progress reaches one");
+            for (Video video : Arrays.asList(videos.get(0), videos.get(2))) {
+                ActivityLog.Entry complete = null;
+                for (JsonElement entry : VideoRepository.findActivity(video.getId())) {
+                    ActivityLog.Entry saved = ActivityLog.Entry.fromJson(entry.getAsJsonObject());
+                    if (saved.text.startsWith("Analisis por frames completado")) complete = saved;
+                }
+                check(complete != null && complete.frame == 60 && Math.abs(complete.seconds - 2.0) < .001, "Batch persists the native frame and time separately for " + video.getTitle());
+            }
             await(this::originalReady, this::checkIndividualCompletion);
         });
     }

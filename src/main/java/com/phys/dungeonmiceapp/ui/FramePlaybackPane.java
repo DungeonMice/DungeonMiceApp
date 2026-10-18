@@ -18,7 +18,7 @@ import javafx.util.Duration;
 /** Demand-paced playback. At most one frame request/image decode is in flight. */
 public final class FramePlaybackPane extends VBox implements AutoCloseable {
     private final PythonFrameClient client;
-    private final Consumer<String> log;
+    private final Consumer<ActivityLog.Entry> log;
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor(r -> { Thread thread = new Thread(r, "dungeonmice-frames"); thread.setDaemon(true); return thread; });
     private final ImageView image = new ImageView();
     private final Label status = new Label("Conectando analisis por frames...");
@@ -32,9 +32,10 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
     private final javafx.beans.property.DoubleProperty progress = new javafx.beans.property.SimpleDoubleProperty(-1);
     private final javafx.beans.property.StringProperty message = new javafx.beans.property.SimpleStringProperty("Preparando analisis...");
     private volatile boolean closed;
-    private boolean playing, pending, ready;
+    private boolean playing, pending, ready, pauseLogPending;
     private int shown, processed, firstCached = 1, total;
     private double fps = 30, zoom = 1;
+    private double seconds;
     private double mouseX, mouseY;
     private JsonObject previousStates;
     private Future<?> request;
@@ -45,7 +46,7 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
     public void setOnFinished(Consumer<Throwable> callback) { onFinished = Objects.requireNonNull(callback); }
     private void finish(Throwable error) { if (!finished) { finished = true; onFinished.accept(error); } }
 
-    public FramePlaybackPane(PythonFrameClient client, Path source, JsonArray regions, Consumer<String> log) {
+    public FramePlaybackPane(PythonFrameClient client, Path source, JsonArray regions, Consumer<ActivityLog.Entry> log) {
         this.client = client; this.log = log;
         setId("frame-player"); setSpacing(8); setMinSize(0, 0); setPadding(new Insets(12, 16, 16, 16));
         image.setPreserveRatio(true); image.setSmooth(true); image.setMouseTransparent(true); image.setId("analysis-frame");
@@ -79,25 +80,33 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         analysisProgress.setMinHeight(10); analysisProgress.setPrefHeight(10); analysisProgress.setMaxHeight(10); analysisProgress.progressProperty().bind(progress);
         Label analysisMessage = new Label(); analysisMessage.setId("frame-progress-label"); analysisMessage.setWrapText(true); analysisMessage.setMaxWidth(Double.MAX_VALUE); analysisMessage.textProperty().bind(message);
         VBox analysis = new VBox(4, analysisProgress, analysisMessage); analysis.setMinHeight(VBox.USE_PREF_SIZE);
-        clock.getStyleClass().add("timecode"); getChildren().addAll(viewTabs, viewport, analysis, clock, timeline, controls);
+        clock.setId("frame-clock"); clock.getStyleClass().add("timecode"); getChildren().addAll(viewTabs, viewport, analysis, clock, timeline, controls);
         request = worker.submit(() -> {
             try {
                 JsonObject info = client.open(source, regions);
                 int count = info.get("total").getAsInt(); double rate = info.get("fps").getAsDouble();
                 if (count <= 0 || !Double.isFinite(rate) || rate <= 0) throw new IllegalArgumentException("Metadatos de video invalidos");
-                Platform.runLater(() -> { if (closed) return; total = count; fps = rate; ready = true; progress.set(0); updateMessage("Preparando"); controls.setDisable(false); status.setVisible(false); log.accept("Analisis por frames conectado"); next(); });
+                Platform.runLater(() -> { if (closed) return; total = count; fps = rate; ready = true; progress.set(0); updateMessage("Preparando"); controls.setDisable(false); status.setVisible(false); log("Analisis por frames conectado"); next(); });
             } catch (Exception error) { failed(error); }
         });
     }
-    public void play() { if (closed) return; playing = true; if (ready && !finished) updateMessage("Procesando"); if (ready && !pending) next(); }
-    public void pause() { playing = false; if (ready && !finished) updateMessage("Pausado"); }
+    public void play() { if (closed) return; playing = true; pauseLogPending = false; if (ready && !finished) updateMessage("Procesando"); if (ready && !pending) next(); }
+    public void pause() {
+        boolean wasPlaying = playing; playing = false; if (ready && !finished) updateMessage("Pausado");
+        if (wasPlaying && shown > 0) { if (pending) pauseLogPending = true; else log("Analisis pausado"); }
+    }
+    private void log(String text) { log.accept(new ActivityLog.Entry(seconds, shown, text, text.startsWith("Error"))); }
+    public boolean reviewFrame(int index) {
+        pause(); if (!ready || pending || closed || index < firstCached || index > processed) return false;
+        seek(index); return true;
+    }
     private void updateMessage(String state) {
         message.set(state + (total > 0 ? " - " + processed + "/" + total + " frames (" + (int) Math.round(Math.max(0, progress.get()) * 100) + "%)" : ""));
     }
     public void next() { if (!ready || pending || closed) return; fetch(shown < processed ? shown + 1 : -1); }
     public void seek(int index) {
         pause(); if (!ready || pending || closed || index == shown) return;
-        if (index < firstCached || index > processed) { log.accept("Frame fuera de la ventana de cache: " + firstCached + "-" + processed); timeline.setValue(shown); return; }
+        if (index < firstCached || index > processed) { log("Frame fuera de la ventana de cache: " + firstCached + "-" + processed); timeline.setValue(shown); return; }
         fetch(index);
     }
     private void fetch(int index) {
@@ -113,8 +122,9 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
                 Platform.runLater(() -> {
                     if (closed) return;
                     pending = false; loading.setVisible(false);
-                    if (frame == null) { playing = false; progress.set(1); updateMessage("Completado"); status.setText("Analisis completado"); status.setVisible(true); log.accept("Analisis por frames completado: " + processed + " frames"); finish(null); return; }
+                    if (frame == null) { playing = false; progress.set(1); updateMessage("Completado"); status.setText("Analisis completado"); status.setVisible(true); log("Analisis por frames completado: " + processed + " frames"); finish(null); return; }
                     shown = frame.metadata.get("index").getAsInt();
+                    seconds = frame.metadata.get("time").getAsDouble();
                     processed = Math.max(processed, shown);
                     progress.set(Math.min(1, (double) processed / total));
                     if (!finished) updateMessage(playing ? "Procesando" : "Pausado");
@@ -130,9 +140,10 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
                     if (index < 0) {
                         for (String name : states.keySet()) {
                             boolean inside = states.getAsJsonObject(name).get("inside").getAsBoolean();
-                            if (previousStates != null && previousStates.has(name) && previousStates.getAsJsonObject(name).get("inside").getAsBoolean() != inside) log.accept("Frame " + shown + " - " + name + ": " + (inside ? "entrada" : "salida"));
+                            if (previousStates != null && previousStates.has(name) && previousStates.getAsJsonObject(name).get("inside").getAsBoolean() != inside) log(name + ": " + (inside ? "entrada" : "salida"));
                         } previousStates = states.deepCopy();
                     }
+                    if (pauseLogPending && !playing) { pauseLogPending = false; log("Analisis pausado"); }
                     if (playing) {
                         long delay = Math.max(0, (long) (1000 / fps) - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
                         request = worker.schedule(() -> Platform.runLater(() -> { if (!closed && playing) next(); }), delay, TimeUnit.MILLISECONDS);
@@ -142,7 +153,7 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         });
     }
     private void failed(Exception error) {
-        Platform.runLater(() -> { if (closed) return; pending = false; playing = false; if (progress.get() < 0) progress.set(0); message.set("Error de analisis: " + error.getMessage()); loading.setVisible(false); status.setText(error.getMessage()); status.setVisible(true); log.accept("Error de analisis por frames: " + error.getMessage()); finish(error); });
+        Platform.runLater(() -> { if (closed) return; pending = false; playing = false; if (progress.get() < 0) progress.set(0); message.set("Error de analisis: " + error.getMessage()); loading.setVisible(false); status.setText(error.getMessage()); status.setVisible(true); log("Error de analisis por frames: " + error.getMessage()); finish(error); });
     }
     private static Button button(String text, String id, String tooltip, Runnable action) {
         Button button = new Button(text); button.setId(id); button.getStyleClass().add("icon-button"); button.setTooltip(new Tooltip(tooltip)); button.setAccessibleText(tooltip); button.setOnAction(event -> action.run()); return button;
