@@ -3,7 +3,8 @@
 All adapter files live in the Java repository on branch `api`. No existing file in
 `F:\JavaApps\DungeonMice` needs to be edited. RunExperiment, MouseTracker, EventLogic,
 ExperimentVisualizer, the JSON loader and labyrinth report generation are imported
-from that project, not copied or reimplemented.
+from that project in development, not reimplemented. Windows packages include an
+unchanged copy of its engine; see `WINDOWS_INSTALLER.md`.
 
 ## Start
 
@@ -17,11 +18,15 @@ Closing Java cancels its transfers and shuts down only its own adapter and
 analysis workers, including when closing during startup. Other local services
 are not stopped. The shutdown endpoint requires a per-launch ownership token.
 
-The Python project defaults to the Java project's sibling `DungeonMice`. The
+In development, the Python project defaults to the Java project's sibling `DungeonMice`. The
 existing isolated environment is discovered automatically, including Windows'
 Codex package cache redirect. Python and its existing `requirements.txt`, VLC
-and FFmpeg still need to be installed; this change does not bundle an installer.
-All adapters remain in the Java repository, not in the Python source tree.
+still need to be installed for source launches. Packaged EXE launches instead use
+`backend/runtime/python/python.exe`, vendored dependencies, `backend/engine` and
+`backend/scripts`, with no separate user Python installation. Only optional MP4
+export requires FFmpeg. All adapters remain owned by the Java repository, not the
+original Python source tree. The package runs Python in isolated UTF-8 mode with
+bytecode writes disabled and a per-user working directory, not Program Files.
 
 Optional IntelliJ VM options:
 

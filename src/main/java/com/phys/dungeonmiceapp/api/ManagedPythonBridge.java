@@ -41,15 +41,22 @@ public final class ManagedPythonBridge implements AutoCloseable {
     private void launch() {
         try {
             Path root = applicationRoot();
-            Path project = Paths.get(System.getProperty("dungeonmice.python.project", root.resolveSibling("DungeonMice").toString())).toAbsolutePath();
-            Path script = root.resolve("scripts/dungeonmice_api_bridge.py");
+            boolean packaged = Files.isRegularFile(root.resolve("DungeonMice.exe"));
+            Path payload = packaged ? root.resolve("backend") : root;
+            Path project = Paths.get(System.getProperty("dungeonmice.python.project",
+                    (packaged ? payload.resolve("engine") : root.resolveSibling("DungeonMice")).toString())).toAbsolutePath();
+            Path script = payload.resolve("scripts/dungeonmice_api_bridge.py");
             if (!Files.isRegularFile(script)) throw new IOException("No se encontro el adaptador de Python: " + script);
             if (!Files.isRegularFile(project.resolve("src/RunExperiment.py"))) throw new IOException("No se encontro la app de Python: " + project);
-            Path executable = pythonExecutable(root, project);
-            List<String> command = new ArrayList<>(Arrays.asList(executable.toString(), "-B", script.toString(), "--python-project", project.toString(), "--port", "0"));
+            Path executable = pythonExecutable(payload, project, packaged);
+            List<String> command = new ArrayList<>(Arrays.asList(executable.toString(), "-B"));
+            if (packaged) command.addAll(Arrays.asList("-I", "-X", "utf8"));
+            command.addAll(Arrays.asList(script.toString(), "--python-project", project.toString(), "--port", "0"));
             String config = System.getProperty("dungeonmice.python.config");
             if (config != null && !config.isBlank()) command.addAll(Arrays.asList("--config", Paths.get(config).toAbsolutePath().toString()));
-            ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile()).redirectErrorStream(true);
+            Path working = packaged ? com.phys.dungeonmiceapp.config.AppPaths.userDataDirectory().resolve("analysis") : root;
+            if (packaged) Files.createDirectories(working);
+            ProcessBuilder builder = new ProcessBuilder(command).directory(working.toFile()).redirectErrorStream(true);
             builder.environment().put("PYTHONDONTWRITEBYTECODE", "1");
             builder.environment().put("PYTHONUTF8", "1");
             builder.environment().put("DUNGEONMICE_SHUTDOWN_TOKEN", shutdownToken);
@@ -90,16 +97,18 @@ public final class ManagedPythonBridge implements AutoCloseable {
     private static Path applicationRoot() throws Exception {
         String configured = System.getProperty("dungeonmice.app.root");
         if (configured != null) return Paths.get(configured).toAbsolutePath().normalize();
-        Path cwd = Paths.get("").toAbsolutePath();
-        if (Files.isRegularFile(cwd.resolve("scripts/dungeonmice_api_bridge.py"))) return cwd;
         Path location = Paths.get(ManagedPythonBridge.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         if (Files.isRegularFile(location)) location = location.getParent();
+        // Installed app-images must never silently fall back to a development checkout.
+        if (location.getParent() != null && Files.isRegularFile(location.getParent().resolve("DungeonMice.exe"))) return location.getParent();
         for (Path candidate = location; candidate != null; candidate = candidate.getParent())
             if (Files.isRegularFile(candidate.resolve("scripts/dungeonmice_api_bridge.py"))) return candidate;
+        Path cwd = Paths.get("").toAbsolutePath();
+        if (Files.isRegularFile(cwd.resolve("scripts/dungeonmice_api_bridge.py"))) return cwd;
         throw new IOException("No se encontro el directorio de la aplicacion Java.");
     }
 
-    private static Path pythonExecutable(Path root, Path project) throws IOException {
+    private static Path pythonExecutable(Path root, Path project, boolean packaged) throws IOException {
         String explicit = System.getProperty("dungeonmice.python.executable", System.getenv("DUNGEONMICE_PYTHON"));
         if (explicit != null && !explicit.isBlank()) {
             Path path = Paths.get(explicit).toAbsolutePath();
@@ -108,6 +117,11 @@ public final class ManagedPythonBridge implements AutoCloseable {
         }
         List<Path> candidates = new ArrayList<>();
         candidates.add(root.resolve("runtime/python/python.exe"));
+        if (packaged) {
+            Path bundled = candidates.get(0);
+            if (!Files.isRegularFile(bundled)) throw new IOException("Falta Python en el paquete instalado: " + bundled + ". Reconstruye el instalador completo.");
+            return bundled;
+        }
         candidates.add(project.resolve(".venv/Scripts/python.exe"));
         String local = System.getenv("LOCALAPPDATA");
         if (local != null) {

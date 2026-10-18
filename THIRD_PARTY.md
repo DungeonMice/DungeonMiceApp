@@ -12,3 +12,21 @@ VLCJ and VLCJ-JavaFX are licensed under GPLv3:
 https://github.com/caprica/vlcj and https://github.com/caprica/vlcj-javafx.
 Review their distribution requirements before distributing a combined application.
 The native VLC libraries have their own licenses; see https://www.videolan.org/legal.html.
+
+# Windows Python bundle
+
+The Windows app-image includes the official embedded Python distribution and
+vendored NumPy, OpenCV-contrib, OpenPyXL and et-xmlfile wheels. Exact versions,
+upstream download URLs and SHA-256 digests are in `scripts/python-bundle-lock.json`.
+Python's LICENSE.txt and wheel `.dist-info` license/notice files are retained in
+`backend/runtime/python`. Consult those notices for their redistribution terms.
+Python embedding documentation: https://docs.python.org/3/using/windows.html.
+
+The original DungeonMice engine's `LICENSE.txt` is retained under `backend/engine`.
+The generated bundle manifest records each engine source file's hash; the original
+Python checkout is not edited. Review that license before distributing the engine.
+
+The installer includes the signed Microsoft Visual C++ x64 redistributable as a
+prerequisite. Its redistribution requires complying with Microsoft's applicable
+license terms; see https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist.
+VLC and the Microsoft shared runtime are not removed by Dungeon Mice's uninstaller.

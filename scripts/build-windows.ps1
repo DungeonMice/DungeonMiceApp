@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
     [string]$JavaHome = $env:JAVA_HOME,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.0.0',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '1.0.2',
+    [string]$PythonProject,
+    [string]$BuildPython,
+    [string]$CacheDirectory,
     [switch]$SkipBuild
 )
 $ErrorActionPreference = 'Stop'
@@ -48,14 +51,39 @@ try {
     foreach ($required in @('DungeonMice.exe', 'DungeonMice.ico', "app\$jarName", 'app\DungeonMice.cfg', 'runtime\release')) {
         if (-not (Test-Path -LiteralPath (Join-Path $generated $required))) { throw "Incomplete generated package: $required" }
     }
+    & (Join-Path $PSScriptRoot 'package-python.ps1') -Destination (Join-Path $generated 'backend') -PythonProject $PythonProject -BuildPython $BuildPython -CacheDirectory $CacheDirectory
+    if (-not (Test-Path -LiteralPath (Join-Path $generated 'backend\bundle-manifest.json'))) { throw 'Python backend packaging failed.' }
     # Update only generated application files. Existing user data/VLC installers remain untouched.
     New-Item -ItemType Directory -Path $appImage -Force | Out-Null
+    $backend = [IO.Path]::GetFullPath((Join-Path $appImage 'backend'))
+    $expected = [IO.Path]::GetFullPath((Join-Path $root 'dist\DungeonMice\backend'))
+    if ($backend -ne $expected) { throw 'Unsafe backend destination' }
+    $backup = Join-Path $build 'previous-backend'
+    $hadBackend = Test-Path -LiteralPath $backend
+    if ($hadBackend) {
+        if (-not (Test-Path -LiteralPath (Join-Path $backend 'bundle-manifest.json'))) { throw 'Refusing to replace an unrecognized backend directory.' }
+        if ((Get-Item -LiteralPath $backend).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Unexpected backend reparse point' }
+        if (Get-ChildItem -LiteralPath $backend -Recurse -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }) { throw 'Unexpected backend reparse point' }
+        if (-not ([IO.Path]::GetFullPath($backup)).StartsWith([IO.Path]::GetFullPath($build) + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe backend backup' }
+        Move-Item -LiteralPath $backend -Destination $backup
+    }
+    try { Copy-Item -LiteralPath (Join-Path $generated 'backend') -Destination $appImage -Recurse -Force }
+    catch {
+        if (Test-Path -LiteralPath $backend) {
+            if ((Get-Item -LiteralPath $backend).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Unexpected partial backend reparse point' }
+            if (Get-ChildItem -LiteralPath $backend -Recurse -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }) { throw 'Unexpected partial backend reparse point' }
+            Remove-Item -LiteralPath $backend -Recurse -Force
+        }
+        if ($hadBackend) { Move-Item -LiteralPath $backup -Destination $backend }
+        throw
+    }
     foreach ($name in @('app', 'runtime', 'DungeonMice.exe', 'DungeonMice.ico')) {
         Copy-Item -LiteralPath (Join-Path $generated $name) -Destination $appImage -Recurse -Force
     }
     Write-Output "Executable: $installedExe"
     Write-Output 'Keep the complete DungeonMice directory, including app and runtime.'
-    Write-Warning 'Java package only: Python interpreter, engine and dependencies still need packaging for distribution.'
+    Write-Output 'Includes portable Python, locked dependencies, unchanged analysis engine and API adapters.'
+    Write-Warning 'Optional MP4 export still requires FFmpeg; live frame analysis does not.'
 } finally {
     $env:JAVA_HOME = $oldJavaHome
     if ($build -and (Test-Path -LiteralPath $build)) {
