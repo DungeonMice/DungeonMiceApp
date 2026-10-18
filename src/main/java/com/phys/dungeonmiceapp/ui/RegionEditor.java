@@ -14,6 +14,7 @@ import javafx.scene.shape.Circle;
 /** Per-video polygon editing. Drafts are never sent or persisted until saved. */
 public final class RegionEditor extends VBox {
     private final PlaybackPane player;
+    private final ExperimentType experiment;
     private final ObservableList<VideoRegion> regions = FXCollections.observableArrayList();
     private final ObservableList<Point2D> draft = FXCollections.observableArrayList();
     private final ListView<VideoRegion> list = new ListView<>(regions);
@@ -42,15 +43,21 @@ public final class RegionEditor extends VBox {
             @Override public Double fromString(String text) { return Double.parseDouble(text.trim()); }
         }); return spinner;
     }
-    private boolean morris() { return shape.getSelectionModel().getSelectedIndex() == 1; }
+    private boolean morris() { return "Cuadrante (Morris)".equals(shape.getValue()); }
 
     public RegionEditor(PlaybackPane player) {
+        this(player, null);
+    }
+
+    public RegionEditor(PlaybackPane player, ExperimentType experiment) {
         this.player = player;
+        this.experiment = experiment;
         setId("region-editor"); setSpacing(10); setPadding(new Insets(12));
         Label title = new Label("Regiones"); title.getStyleClass().add("section-heading");
         Label countSaved = new Label(); countSaved.textProperty().bind(javafx.beans.binding.Bindings.size(regions).asString("%d guardadas")); countSaved.getStyleClass().add("muted");
         Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS); HBox header = new HBox(8, title, spacer, countSaved); header.setAlignment(Pos.CENTER_LEFT);
         shape.setId("region-shape"); shape.getItems().setAll("Poligono (CrossMaze)", "Cuadrante (Morris)"); shape.getSelectionModel().select(0); shape.setMaxWidth(Double.MAX_VALUE);
+        if (experiment != null) { shape.getItems().setAll(experiment == ExperimentType.MORRIS_POOL ? "Cuadrante (Morris)" : "Poligono (CrossMaze)"); shape.getSelectionModel().selectFirst(); }
         shape.disableProperty().bind(editing.or(locked));
         list.setId("region-list"); list.setMinHeight(90); list.setPrefHeight(130); list.setPlaceholder(new Label("Sin regiones"));
         list.setCellFactory(view -> new ListCell<VideoRegion>() {
@@ -140,7 +147,14 @@ public final class RegionEditor extends VBox {
     public void setVideo(Video video) {
         cancel(); this.video = video; regions.clear();
         if (video != null) {
-            try { regions.setAll(VideoRepository.findRegions(video.getId())); shape.getSelectionModel().select(regions.stream().anyMatch(VideoRegion::isMorris) ? 1 : 0); }
+            try {
+                regions.setAll(VideoRepository.findRegions(video.getId()));
+                if (experiment == null) shape.getSelectionModel().select(regions.stream().anyMatch(VideoRegion::isMorris) ? 1 : 0);
+                else {
+                    shape.getSelectionModel().selectFirst();
+                    if (regions.stream().anyMatch(region -> !experiment.supports(region))) message.setText("Este proyecto es " + experiment + ". Revisa las regiones de otro tipo antes de procesar.");
+                }
+            }
             catch (RuntimeException error) { message.setText(error.getMessage()); }
         }
         overlay();
@@ -148,8 +162,9 @@ public final class RegionEditor extends VBox {
 
     private void begin(VideoRegion region) {
         if (video == null || !player.videoReadyProperty().get() || locked.get()) return;
+        if (region != null && experiment != null && !experiment.supports(region)) { message.setText("Esta region no corresponde a " + experiment + ". Eliminala y vuelve a dibujarla, o revisa la categoria del proyecto."); return; }
         cancel(); replacing = region; name.setText(region == null ? (morris() ? "Plataforma" : "Region " + (regions.size() + 1)) : region.getName());
-        if (region != null) shape.getSelectionModel().select(region.isMorris() ? 1 : 0);
+        if (region != null) shape.setValue(region.isMorris() ? "Cuadrante (Morris)" : "Poligono (CrossMaze)");
         color.setValue(Color.web(region == null ? palette(regions.size()) : region.getColor()));
         threshold.setValue(region == null ? 80 : region.getThreshold() * 100);
         if (region != null) {
@@ -254,7 +269,7 @@ public final class RegionEditor extends VBox {
                 throw new IllegalArgumentException("La resolucion del video cambio. Vuelve a dibujar sus regiones.");
             payload.add(region.toJson());
         }
-        VideoRegion.analysisType(payload); return payload;
+        if (experiment == null) VideoRegion.analysisType(payload); else experiment.validateRegions(payload); return payload;
     }
     private void overlay() {
         List<VideoRegion> visible = new ArrayList<>(regions); if (replacing != null) visible.remove(replacing);

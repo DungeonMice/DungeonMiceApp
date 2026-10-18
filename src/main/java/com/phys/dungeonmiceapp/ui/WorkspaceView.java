@@ -47,7 +47,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private final PasswordField repeatPassword = password("repeat-password");
     private final TextField projectName = field("project-name");
     private final TextField description = field("project-description");
-    private final TextField category = field("project-category");
+    private final ComboBox<ExperimentType> category = new ComboBox<>(javafx.collections.FXCollections.observableArrayList(ExperimentType.values()));
     private final TextField owner = field("project-responsible");
     private final TextField participants = field("project-participants");
     private final TextField location = field("project-location");
@@ -86,6 +86,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
 
     public WorkspaceView(Stage stage) {
         this.stage = stage;
+        category.setId("project-category"); category.setPromptText("Seleccionar categoria"); category.setMaxWidth(Double.MAX_VALUE);
         stage.getIcons().add(brandLogo);
         getStyleClass().add("workspace");
         stage.setOnCloseRequest(e -> { e.consume(); exitApplication(); });
@@ -291,7 +292,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             edit.setDisable(selectedProject == null); selectedVideo = null; preview.close(); open.setDisable(true);
             if (selectedProject == null) { detail.setText("Selecciona o crea un proyecto."); videos.getItems().clear(); return; }
             detail.setText(selectedProject.getName() + "\n\n" + selectedProject.getDescription()
-                    + "\nCategor\u00eda: " + selectedProject.getCategory() + "\nPersona a cargo: " + selectedProject.getResponsible()
+                    + "\nCategor\u00eda: " + ExperimentType.categoryLabel(selectedProject.getCategory()) + "\nPersona a cargo: " + selectedProject.getResponsible()
                     + "\nParticipantes: " + selectedProject.getParticipants() + "\nUbicaci\u00f3n: " + selectedProject.getLocation());
             videos.getItems().setAll(VideoRepository.findByGroup(selectedProject.getId()));
         };
@@ -325,7 +326,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         if (edit && selectedProject == null) return;
         pendingVideos.clear(); directoryVideos = Collections.emptyList(); VideoGroup p = edit ? selectedProject : null;
         projectName.setText(p == null ? "" : p.getName()); description.setText(p == null ? "" : p.getDescription());
-        category.setText(p == null ? "" : p.getCategory()); owner.setText(p == null ? "" : p.getResponsible());
+        category.setValue(p == null ? null : ExperimentType.fromCategory(p.getCategory())); owner.setText(p == null ? "" : p.getResponsible());
         participants.setText(p == null ? "" : p.getParticipants()); location.setText(p == null ? "" : p.getLocation()); show(edit ? "edit-project" : "create-project");
     }
 
@@ -393,6 +394,12 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
 
     private void saveProject(boolean edit) {
         if (projectName.getText().trim().isEmpty()) { error(new IllegalArgumentException("El nombre del proyecto es obligatorio.")); return; }
+        if (category.getValue() == null) { error(new IllegalArgumentException("Selecciona Piscina de Morris o CrossMaze.")); return; }
+        if (edit && !category.getValue().code().equals(selectedProject.getCategory())) {
+            boolean incompatible = VideoRepository.findByGroup(selectedProject.getId()).stream()
+                    .anyMatch(video -> VideoRepository.findRegions(video.getId()).stream().anyMatch(region -> !category.getValue().supports(region)));
+            if (incompatible && !confirm("Cambiar categoria", "Hay regiones de otro tipo. Se conservaran, pero debes revisarlas o redibujarlas antes de procesar. Continuar?")) return;
+        }
         if (location.getText().trim().isEmpty()) {
             try { finishSaveProject(edit, MediaFiles.references(pendingVideos)); } catch (Exception ex) { error(ex); }
             return;
@@ -408,7 +415,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     private void finishSaveProject(boolean edit, List<File> sources) {
         boolean saved = false;
         try {
-            selectedProject = VideoGroupRepository.saveProject(edit ? selectedProject.getId() : null, projectName.getText(), description.getText(), category.getText(), owner.getText(), participants.getText(), location.getText().trim());
+            selectedProject = VideoGroupRepository.saveProject(edit ? selectedProject.getId() : null, projectName.getText(), description.getText(), category.getValue().code(), owner.getText(), participants.getText(), location.getText().trim());
             saved = true;
             VideoRepository.addReferences(selectedProject.getId(), sources);
             pendingVideos.clear(); show("projects");
@@ -480,7 +487,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         List<Video> videos = VideoRepository.findByGroup(selectedProject.getId());
         javafx.collections.ObservableList<ActivityLog.Entry> history = javafx.collections.FXCollections.observableArrayList();
         PlaybackPane player = newPlayer(false, text -> logVideo(selectedVideo, PlaybackPane.format(playerTime()), text, text.startsWith("No ") || text.startsWith("Error")));
-        RegionEditor regions = new RegionEditor(player);
+        RegionEditor regions = new RegionEditor(player, ExperimentType.fromCategory(selectedProject.getCategory()));
         regions.setOnApplyAll(() -> {
             try {
                 regions.requestRegions();
@@ -619,7 +626,10 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                 Map<String, JsonArray> snapshots = new HashMap<>();
                 for (Video original : originals) {
                     JsonArray payload = new JsonArray(); for (VideoRegion region : VideoRepository.findRegions(original.getId())) payload.add(region.toJson());
-                    try { VideoRegion.analysisType(payload); }
+                    try {
+                        ExperimentType type = ExperimentType.fromCategory(selectedProject.getCategory());
+                        if (type == null) VideoRegion.analysisType(payload); else type.validateRegions(payload);
+                    }
                     catch (IllegalArgumentException ex) { throw new IllegalArgumentException(original.getTitle() + ": " + ex.getMessage()); }
                     snapshots.put(original.getId(), payload);
                 }

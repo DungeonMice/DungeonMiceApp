@@ -169,6 +169,8 @@ public final class FunctionalChecks extends Application {
             check(UserRepository.findByUsername("renamed-user").getFullName().equals("Updated Through UI"), "UI profile saved");
             snapshot(workspace, "profile-saved.png");
             fire("Crear proyecto"); css(); text("project-name", "UI Project"); text("project-description", "Created in the interface");
+            @SuppressWarnings("unchecked") ComboBox<com.phys.dungeonmiceapp.model.ExperimentType> category = (ComboBox<com.phys.dungeonmiceapp.model.ExperimentType>) workspace.lookup("#project-category");
+            category.setValue(com.phys.dungeonmiceapp.model.ExperimentType.CROSS_MAZE);
             text("project-location", sandbox.resolve("missing").toString());
             text("project-location", sandbox.resolve("external-source").toString());
             waitFor(() -> workspace.lookup("#project-files") != null && ((ListView<?>) workspace.lookup("#project-files")).getItems().size() == 2, () -> {
@@ -183,6 +185,7 @@ public final class FunctionalChecks extends Application {
             css();
             check(VideoGroupRepository.findGroupsByCurrentUser().size() == 3, "UI project creation");
             VideoGroup directoryProject = VideoGroupRepository.findGroupsByCurrentUser().stream().filter(p -> p.getName().equals("UI Project")).findFirst().orElseThrow();
+            check(directoryProject.getCategory().equals("CrossMaze"), "UI project category stored with directory references");
             check(VideoRepository.findByGroup(directoryProject.getId()).size() == 2, "UI directory videos associated");
             check(VideoRepository.findByGroup(directoryProject.getId()).stream().allMatch(v -> v.getFilePath().startsWith(sandbox.resolve("external-source").toString())), "UI stores source paths");
             check(!Files.exists(sandbox.resolve("videos")), "Saving does not copy or convert videos");

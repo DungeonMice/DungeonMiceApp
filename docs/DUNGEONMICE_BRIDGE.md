@@ -260,6 +260,22 @@ against the region metadata instead of assuming CrossMaze's 1280x720 frames.
 
 ## Project-Wide Frame Analysis
 
+Project creation/editing now requires choosing **CrossMaze** or **Piscina de
+Morris** from the category dropdown. The database stores stable category values
+`CrossMaze` / `MorrisPool`, while the form displays readable labels. A typed
+project's region editor only offers its matching geometry: polygons for CrossMaze
+or one circular 90-degree quadrant for Morris. Both interactive processing and
+optional batch MP4 export validate regions against the selected project type.
+
+Changing category never converts or deletes existing regions. A confirmation
+warns about incompatible saved shapes; these remain visible but must be reviewed
+before processing. Legacy free-text/empty categories are not silently migrated:
+their existing region editor keeps its previous automatic behavior until the
+user explicitly selects a supported category when editing the project.
+`scripts/check-project-category.ps1` checks dropdown creation/editing, persistence,
+geometry restrictions, incompatible-category confirmation and legacy preservation
+against a disposable database and synthetic video.
+
 **Procesar todos** in the main processing panel confirms replacement of existing
 per-video regions, copies the selected video's saved regions to every project
 video, and processes them sequentially using the native per-frame engine. Region
