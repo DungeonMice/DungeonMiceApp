@@ -5,6 +5,9 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
+import json
+import shutil
 import hashlib
 import subprocess
 import sys
@@ -21,9 +24,89 @@ def load(name, path):
 
 builder = load("linux_builder", SCRIPTS / "build-linux.py")
 setup = load("linux_setup", SCRIPTS / "linux/setup-linux.py")
+installer = load("linux_installer", SCRIPTS / "build-linux-installer.py")
 
 
 class LinuxBuilderChecks(unittest.TestCase):
+    def test_self_extracting_payload_offset_and_checksum(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            payload = b"\x1f\x8btest\nbinary\x00payload\n"
+            archive = root / "test.tar.gz"
+            archive.write_bytes(payload)
+            target = root / "install.run"
+            installer.write_installer(archive, SCRIPTS / "linux/installer.run.sh", target)
+            content = target.read_bytes()
+            header, stored = content.split(b"__DUNGEONMICE_PAYLOAD_BELOW__\n", 1)
+            self.assertEqual(stored, payload)
+            self.assertIn(hashlib.sha256(payload).hexdigest().encode(), header)
+            marker = b"tail -n +" + str(header.count(b"\n") + 2).encode() + b' "$0"'
+            self.assertIn(marker, header)
+
+    def bundle_fixture(self, root, version="old"):
+        root.mkdir()
+        for name in setup.PAYLOAD:
+            if name in ("app", "backend", "runtime"):
+                (root / name).mkdir()
+            else:
+                (root / name).write_text("fixture")
+        (root / "bundle-manifest.json").write_text(json.dumps(dict(platform="linux-x86_64")))
+        (root / "app/version").write_text(version)
+        return root
+
+    def test_single_installer_dependencies_copy_and_menu(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.bundle_fixture(root / "extracted")
+            (source / "personal-video.avi").write_bytes(b"not part of the program")
+            base = root / "user-data"
+            database = base / "DungeonMice/data/database.enc"
+            database.parent.mkdir(parents=True)
+            database.write_bytes(b"user data")
+            with mock.patch.object(setup.sys, "platform", "linux"), mock.patch.object(setup.sys, "argv", ["setup-linux.py", "--install"]), mock.patch.object(setup, "__file__", str(source / "setup-linux.py")), mock.patch.object(setup.os, "geteuid", return_value=1000, create=True), mock.patch.dict(setup.os.environ, {"XDG_DATA_HOME": str(base)}), mock.patch.object(setup.subprocess, "run") as dependencies:
+                setup.main()
+                dependencies.assert_called_once_with([str(source / "install-dependencies.sh")], check=True)
+            destination = base / "dungeon-mice-app"
+            self.assertTrue((destination / "DungeonMice").is_file())
+            self.assertFalse((destination / "personal-video.avi").exists())
+            shortcut = (base / "applications/dungeon-mice.desktop").read_text()
+            self.assertIn(setup.desktop_escape(str(destination / "DungeonMice")), shortcut)
+            shutil.rmtree(source)
+            self.assertTrue((destination / "app/version").is_file())
+            self.assertEqual(database.read_bytes(), b"user data")
+
+    def test_update_and_copy_failure_preserve_previous_program(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.bundle_fixture(root / "source")
+            destination = root / "installed/dungeon-mice-app"
+            setup.install_bundle(source, destination)
+            (source / "app/version").write_text("new")
+            with mock.patch.object(setup.shutil, "copy2", side_effect=OSError("simulated copy failure")):
+                with self.assertRaises(OSError):
+                    setup.install_bundle(source, destination)
+            self.assertEqual((destination / "app/version").read_text(), "old")
+            setup.install_bundle(source, destination)
+            self.assertEqual((destination / "app/version").read_text(), "new")
+            self.assertEqual(list(destination.parent.glob(".dungeon-mice-install-*")), [])
+
+    def test_foreign_destination_and_extra_user_files_are_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = self.bundle_fixture(root / "source")
+            destination = root / "foreign"
+            destination.mkdir()
+            personal = destination / "personal.txt"
+            personal.write_text("preserve")
+            with self.assertRaises((ValueError, FileNotFoundError)):
+                setup.install_bundle(source, destination)
+            self.assertEqual(personal.read_text(), "preserve")
+            installed = setup.install_bundle(source, root / "installed")
+            (installed / "personal.txt").write_text("preserve too")
+            with self.assertRaises(ValueError):
+                setup.install_bundle(source, installed)
+            self.assertEqual((installed / "personal.txt").read_text(), "preserve too")
+
     def test_runtime_permissions_and_links(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

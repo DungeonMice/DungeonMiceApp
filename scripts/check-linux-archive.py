@@ -25,7 +25,7 @@ def check(path):
                 assert target.startswith("DungeonMice/") and target in members, (item.name, target)
         def read(name):
             return archive.extractfile("DungeonMice/" + name).read()
-        for name in ("DungeonMice", "setup.sh", "install-dependencies.sh", "check-linux.sh"):
+        for name in ("DungeonMice", "instalar.sh", "setup.sh", "install-dependencies.sh", "check-linux.sh"):
             assert members["DungeonMice/" + name].mode & 0o111, name
             assert read(name).startswith(b"#!/bin/sh\n") and b"\r" not in read(name), name
         for name in ("runtime/bin/java", "backend/runtime/python/bin/python3"):

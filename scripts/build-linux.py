@@ -197,7 +197,7 @@ def build(args):
                 for source, relative in engine:
                     bundle.file("backend/" + relative, source)
                 bundle.file("backend/engine/LICENSE.txt", project / "LICENSE.txt")
-                for name in ("DungeonMice", "setup.sh", "install-dependencies.sh", "check-linux.sh"):
+                for name in ("DungeonMice", "instalar.sh", "setup.sh", "install-dependencies.sh", "check-linux.sh"):
                     bundle.file(name, ROOT / "scripts/linux" / name, executable=True)
                 for name in ("setup-linux.py", "check-linux.py"):
                     bundle.file(name, ROOT / "scripts/linux" / name)
@@ -218,6 +218,7 @@ def build(args):
     destination.with_name(destination.name + ".sha256").write_text(checksum + "  " + destination.name + "\n", encoding="ascii")
     print("Archive: " + str(destination), flush=True)
     print("SHA256: " + checksum, flush=True)
+    subprocess.run([sys.executable, "-B", str(ROOT / "scripts/build-linux-installer.py"), str(destination)], check=True)
     print("Linux UI/runtime execution must be verified on Linux with ./check-linux.sh", flush=True)
 
 

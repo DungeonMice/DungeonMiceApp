@@ -11,31 +11,55 @@ and 24.04 are reference targets. This is not an ARM/Raspberry Pi, Alpine/musl,
 macOS or Windows package. Runtime verification on the target Linux system is
 required; the cross-platform builder cannot execute Linux programs on Windows.
 
-## Extract and Run
+## Single-File Installer
+
+Copy `DungeonMice-1.0.6-linux-x86_64.run` to the Linux computer and run:
+
+```sh
+sh DungeonMice-1.0.6-linux-x86_64.run
+```
+
+Run it as your normal user, without sudo. It verifies and extracts its own
+embedded payload, installs dependencies, copies the app to a permanent location
+and registers it in the application menu. It asks for sudo only for apt packages.
+Its private extraction folder is removed when it finishes, including on failure.
+You may discard the `.run` file after installation. The tarball below remains
+available for portable use or manual extraction; you do not need both downloads.
+
+## Install From the Tarball
 
 Extract on Linux so permissions and symbolic links are preserved:
 
 ```sh
 tar -xzf DungeonMice-1.0.6-linux-x86_64.tar.gz
 cd DungeonMice
-./install-dependencies.sh
-./DungeonMice
+./instalar.sh
 ```
 
-The dependency script uses apt on Ubuntu/Debian and requests administrator
+Run `instalar.sh` as your normal user, without sudo. It installs the system
+dependencies, copies the program to `${XDG_DATA_HOME:-$HOME/.local/share}/dungeon-mice-app`
+and adds Dungeon Mice to the application menu with the mouse icon. Launch it from
+the menu after installation. The extracted source folder may then be discarded.
+Close Dungeon Mice before running the installer again to update an existing copy.
+The separate `DungeonMice` user-data folder and external videos are preserved.
+
+The dependency step uses apt on Ubuntu/Debian and requests administrator
 permission to install VLC, FFmpeg and the GTK/GL/ALSA desktop libraries. It
 does not install Java/Python or modify Dungeon Mice's data. On other desktop
 distributions, install the equivalent system libraries and VLC manually.
 FFmpeg is used only by optional full MP4 export. Live analysis uses OpenCV.
 An internet connection is needed for apt if these dependencies are missing.
 
-Optional application-menu shortcut with the yellow mouse icon:
+Alternatively, run the extracted folder without copying it:
 
 ```sh
+./install-dependencies.sh
 ./setup.sh
+./DungeonMice
 ```
 
-The shortcut points to this extracted folder; keep it at the same location.
+In that portable mode, the shortcut points to the extracted folder; keep it at
+the same location. The one-script install uses its own permanent program folder.
 To remove the shortcut, use `./setup.sh --uninstall`. Then remove only the
 extracted application folder when no longer needed. User data and external
 source videos are kept separately and are not removed by setup/uninstall.
@@ -83,6 +107,7 @@ code is executed during a Windows build. Output and checksum:
 ```
 dist/linux/DungeonMice-1.0.6-linux-x86_64.tar.gz
 dist/linux/DungeonMice-1.0.6-linux-x86_64.tar.gz.sha256
+dist/linux/DungeonMice-1.0.6-linux-x86_64.run
 ```
 
 Use `--version 1.0.7` for another version or `--force` to explicitly replace an
