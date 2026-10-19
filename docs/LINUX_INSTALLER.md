@@ -13,10 +13,10 @@ required; the cross-platform builder cannot execute Linux programs on Windows.
 
 ## Single-File Installer
 
-Copy `DungeonMice-1.0.6-linux-x86_64.run` to the Linux computer and run:
+Copy `DungeonMice-1.0.7-linux-x86_64.run` to the Linux computer and run:
 
 ```sh
-sh DungeonMice-1.0.6-linux-x86_64.run
+sh DungeonMice-1.0.7-linux-x86_64.run
 ```
 
 Run it as your normal user, without sudo. It verifies and extracts its own
@@ -31,7 +31,7 @@ available for portable use or manual extraction; you do not need both downloads.
 Extract on Linux so permissions and symbolic links are preserved:
 
 ```sh
-tar -xzf DungeonMice-1.0.6-linux-x86_64.tar.gz
+tar -xzf DungeonMice-1.0.7-linux-x86_64.tar.gz
 cd DungeonMice
 ./instalar.sh
 ```
@@ -48,6 +48,8 @@ permission to install VLC, FFmpeg and the GTK/GL/ALSA desktop libraries. It
 does not install Java/Python or modify Dungeon Mice's data. On other desktop
 distributions, install the equivalent system libraries and VLC manually.
 FFmpeg is used only by optional full MP4 export. Live analysis uses OpenCV.
+MP4 export feeds annotated frames directly into FFmpeg's libx264 encoder; it
+does not require the OpenCV wheel to include an H.264 encoder.
 An internet connection is needed for apt if these dependencies are missing.
 
 Alternatively, run the extracted folder without copying it:
@@ -105,12 +107,12 @@ their Unix executable permissions and relative links preserved. No Linux native
 code is executed during a Windows build. Output and checksum:
 
 ```
-dist/linux/DungeonMice-1.0.6-linux-x86_64.tar.gz
-dist/linux/DungeonMice-1.0.6-linux-x86_64.tar.gz.sha256
-dist/linux/DungeonMice-1.0.6-linux-x86_64.run
+dist/linux/DungeonMice-1.0.7-linux-x86_64.tar.gz
+dist/linux/DungeonMice-1.0.7-linux-x86_64.tar.gz.sha256
+dist/linux/DungeonMice-1.0.7-linux-x86_64.run
 ```
 
-Use `--version 1.0.7` for another version or `--force` to explicitly replace an
+Use `--version 1.0.8` for another version or `--force` to explicitly replace an
 existing archive of the same version. Use `--cache`, `--output`, `--java-home`
 and `--python-project` to override builder locations. Downloads remain in a
 per-user build cache; source videos and personal databases are never scanned

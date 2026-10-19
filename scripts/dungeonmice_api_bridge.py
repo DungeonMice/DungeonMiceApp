@@ -12,6 +12,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from http.server import ThreadingHTTPServer
@@ -90,12 +91,14 @@ def validate_metadata(metadata):
 
 
 class HeadlessVideo:
-    """Redirect only RunExperiment's display calls to a VideoWriter in its worker."""
+    """Send RunExperiment's annotated display frames to the system FFmpeg encoder."""
     def __init__(self, cv2, destination):
         self.cv2 = cv2
         self.destination = destination
         self.capture = None
         self.writer = None
+        self.encoder_log = None
+        self.frame_size = None
         self.frames = 0
         self.fps = 0
         self.total = 0
@@ -123,15 +126,31 @@ class HeadlessVideo:
             return
         if self.writer is None:
             height, width = frame.shape[:2]
-            if os.name == "nt":
-                self.writer = self.cv2.VideoWriter(str(self.destination), self.cv2.CAP_MSMF,
-                                                  self.cv2.VideoWriter_fourcc(*"avc1"), self.fps, (width, height))
-            else:
-                self.writer = self.cv2.VideoWriter(str(self.destination), self.cv2.VideoWriter_fourcc(*"avc1"),
-                                                  self.fps, (width, height))
-            if not self.writer.isOpened():
-                raise ValueError("Could not create H.264 MP4; this environment needs an H.264 encoder")
-        self.writer.write(frame)
+            if width % 2 or height % 2:
+                raise ValueError("La exportacion H.264 requiere dimensiones pares")
+            executable = require_mp4_encoder()
+            self.frame_size = (height, width, 3)
+            self.encoder_log = tempfile.TemporaryFile()
+            try:
+                self.writer = subprocess.Popen([
+                    executable, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                    "-f", "rawvideo", "-pixel_format", "bgr24", "-video_size", f"{width}x{height}",
+                    "-framerate", format(self.fps, ".12g"), "-i", "pipe:0",
+                    "-f", "lavfi", "-i", "anullsrc=channel_layout=mono:sample_rate=44100",
+                    "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-threads", "2", "-preset", "veryfast",
+                    "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest",
+                    "-movflags", "+faststart", str(self.destination)
+                ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=self.encoder_log)
+            except Exception:
+                self.encoder_log.close(); self.encoder_log = None
+                raise
+        if frame.shape != self.frame_size or frame.dtype.name != "uint8":
+            raise ValueError("El frame exportado cambio de dimensiones o formato")
+        try:
+            self.writer.stdin.write(frame.tobytes())
+        except (BrokenPipeError, OSError):
+            self.destroyAllWindows()
+            raise ValueError("FFmpeg cerro la entrada del video antes de terminar")
         self.frames += 1
         if self.frames % 300 == 0:
             print(f"Processed {self.frames}/{self.total} frames", flush=True)
@@ -140,19 +159,39 @@ class HeadlessVideo:
         return -1
 
     def destroyAllWindows(self):
-        if self.writer is not None:
-            self.writer.release()
-            self.writer = None
+        if self.writer is None:
+            return
+        process, self.writer = self.writer, None
+        try:
+            try:
+                process.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
+            try:
+                code = process.wait(timeout=120)
+            except subprocess.TimeoutExpired:
+                process.kill(); process.wait(timeout=5)
+                raise ValueError("FFmpeg no pudo finalizar el MP4 a tiempo")
+            if code != 0:
+                self.encoder_log.seek(0)
+                detail = self.encoder_log.read().decode("utf-8", errors="replace")[-1200:]
+                raise ValueError("FFmpeg no pudo codificar H.264 (libx264): " + detail)
+        finally:
+            self.encoder_log.close(); self.encoder_log = None
 
     def close(self):
-        self.destroyAllWindows()
-        if self.capture is not None:
-            self.capture.release()
+        try:
+            self.destroyAllWindows()
+        finally:
+            if self.capture is not None:
+                self.capture.release(); self.capture = None
 
 
 def require_mp4_encoder():
-    if shutil.which("ffmpeg") is None:
+    executable = shutil.which("ffmpeg")
+    if executable is None:
         raise ValueError("La exportacion MP4 requiere FFmpeg en PATH. El analisis por frames no lo necesita.")
+    return executable
 
 
 def run_worker(request_path):
@@ -189,8 +228,7 @@ def run_worker(request_path):
     config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
     labyrinth = load_experiment(config_path)
     output = folder / "processed.mp4"
-    encoded = folder / "annotated-video.mp4"
-    display = HeadlessVideo(cv2, encoded)
+    display = HeadlessVideo(cv2, output)
     # This binding is private to the disposable subprocess. No OpenCV global or
     # existing Python file is changed; tracking, regions and event logic are reused.
     original_cv2 = RunExperiment.cv2
@@ -202,13 +240,8 @@ def run_worker(request_path):
             raise ValueError("DungeonMice did not produce video results")
         states, trajectory_x, trajectory_y, first_frame, recording_duration = results
         print("Stage: Generando video y resultados", flush=True)
-        # Mux a silent AAC clock track without re-encoding frames. VLC's callback
-        # input needs a stable MP4 clock for seeking these video-only exports.
-        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-i", str(encoded),
-                        "-f", "lavfi", "-i", "anullsrc=channel_layout=mono:sample_rate=44100",
-                        "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac",
-                        "-shortest", "-movflags", "+faststart", str(output)], check=True, timeout=120)
-        encoded.unlink()
+        # One encoding pass supplies H.264 plus the silent AAC clock used by VLC seeking.
+        display.destroyAllWindows()
         name = "api-video"
         labyrinth.process_video(
             all_results={name: states}, all_trajectories={name: (trajectory_x, trajectory_y)},

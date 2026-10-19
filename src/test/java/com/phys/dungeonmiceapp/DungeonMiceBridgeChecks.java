@@ -67,7 +67,10 @@ public final class DungeonMiceBridgeChecks extends Application {
                         if (System.nanoTime() - started > 40_000_000_000L) throw new AssertionError("Processed video did not play/seek: " + player.getPlayer().getStatus() + " time=" + player.getPlayer().getCurrentTime() + " duration=" + player.getPlayer().getTotalDuration());
                         if (player.getPlayer().getCurrentTime().toSeconds() > 28.2) {
                             System.out.println("PASS real DungeonMice result decoded, seeked and played in Java");
-                            wait.stop(); player.close(); Platform.exit();
+                            wait.stop(); player.close();
+                            // Keep JavaFX alive while the asynchronous VLC release drains callbacks.
+                            PauseTransition cleanup = new PauseTransition(Duration.seconds(1));
+                            cleanup.setOnFinished(done -> Platform.exit()); cleanup.play();
                         }
                     } catch (Throwable error) { fail(error); }
                 })); wait.setCycleCount(Timeline.INDEFINITE); wait.play();

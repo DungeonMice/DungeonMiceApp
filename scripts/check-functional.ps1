@@ -31,6 +31,16 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Window controls checks failed.' }
     & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.WindowControlsChecks --native-close
     if ($LASTEXITCODE -ne 0) { throw 'Native close checks failed.' }
+    # Native pointer events exercise scene picking, including translated login forms.
+    foreach ($screen in @('login', 'register')) {
+        foreach ($size in @('compact', 'large')) {
+            $pointerArguments = @('--pointer')
+            if ($screen -eq 'register') { $pointerArguments += '--register' }
+            if ($size -eq 'large') { $pointerArguments += '--large' }
+            & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.WindowControlsChecks @pointerArguments
+            if ($LASTEXITCODE -ne 0) { throw "Native pointer controls failed: $screen/$size" }
+        }
+    }
     $startupDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('dungeonmice-startup-' + [guid]::NewGuid())
     & $JavaPath "-Ddungeonmice.database=$startupDirectory/data/database.enc" "-Ddungeonmice.storage=$startupDirectory" -cp "$testClasspath;$testFx" com.phys.dungeonmiceapp.App --ui-snapshots
     if ($LASTEXITCODE -ne 0) { throw 'Direct Java application startup failed.' }

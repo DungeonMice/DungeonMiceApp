@@ -61,25 +61,45 @@ class BridgeChecks(unittest.TestCase):
         finally:
             bridge.OPTIONS = old_options
 
-    def test_display_adapter_writes_only_annotated_frame(self):
+    def test_display_adapter_encodes_only_annotated_frame_without_opencv_writer(self):
         cv2 = Mock()
         cv2.VideoCapture.return_value.isOpened.return_value = True
         cv2.VideoCapture.return_value.get.return_value = 30
-        cv2.VideoWriter.return_value.isOpened.return_value = True
         display = bridge.HeadlessVideo(cv2, Path("processed.mp4"))
         display.VideoCapture("source.mov")
-        frame = Mock(); frame.shape = (720, 1280, 3)
-        display.imshow("fgmask", frame)
+        frame = Mock(); frame.shape = (720, 1280, 3); frame.dtype.name = "uint8"; frame.tobytes.return_value = b"annotated-frame"
+        process = Mock(); process.wait.return_value = 0
+        with patch.object(bridge.subprocess, "Popen", return_value=process) as start, patch.object(bridge.shutil, "which", return_value="ffmpeg"):
+            display.imshow("fgmask", frame)
+            start.assert_not_called()
+            display.imshow("frame", frame)
+            command = start.call_args.args[0]
+            self.assertIn("libx264", command); self.assertIn("aac", command)
+            self.assertIn("pipe:0", command)
         cv2.VideoWriter.assert_not_called()
-        display.imshow("frame", frame)
-        cv2.VideoWriter.return_value.write.assert_called_once_with(frame)
+        process.stdin.write.assert_called_once_with(b"annotated-frame")
         self.assertEqual(display.frames, 1)
         self.assertEqual(display.waitKey(1), -1)
         display.namedWindow("frame"); display.resizeWindow("frame", 1280, 720)
         cv2.namedWindow.assert_not_called(); cv2.resizeWindow.assert_not_called()
         display.close()
-        cv2.VideoWriter.return_value.release.assert_called_once()
+        process.stdin.close.assert_called_once()
+        process.wait.assert_called_once_with(timeout=120)
+        self.assertIsNone(display.encoder_log)
         cv2.VideoCapture.return_value.release.assert_called_once()
+
+    def test_ffmpeg_encoder_error_is_reported_and_released(self):
+        display = bridge.HeadlessVideo(Mock(), Path("processed.mp4")); display.fps = 30
+        frame = Mock(); frame.shape = (2, 2, 3); frame.dtype.name = "uint8"; frame.tobytes.return_value = bytes(12)
+        process = Mock(); process.wait.return_value = 1
+        with patch.object(bridge.subprocess, "Popen", return_value=process), patch.object(bridge.shutil, "which", return_value="ffmpeg"):
+            display.imshow("frame", frame)
+        display.encoder_log.write(b"Unknown encoder libx264")
+        with self.assertRaisesRegex(ValueError, "Unknown encoder libx264"):
+            display.close()
+        self.assertIsNone(display.writer); self.assertIsNone(display.encoder_log)
+        display.close()
+        process.wait.assert_called_once()
 
     def test_morris_geometry_validation(self):
         from experiment_config import select_config, validate_frame_regions

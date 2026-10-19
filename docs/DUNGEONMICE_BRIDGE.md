@@ -161,10 +161,12 @@ example server on the same port.
   worker process. Only that worker's RunExperiment display binding is redirected:
   its annotated `frame` images are written to an MP4 instead of opening OpenCV
   windows. The tracker and scientific event logic remain unchanged.
-- The result is a full MP4 (H.264 video with a silent AAC clock track), not an echo of the input. On
-  Windows, the adapter uses the Media Foundation encoder through OpenCV; it needs
-  a working H.264 encoder. FFmpeg must be on PATH to mux the clock track without
-  re-encoding the annotated video. Original sound is not analyzed or returned. There
+- The result is a full MP4 (H.264 video with a silent AAC clock track), not an echo of the input.
+  On Windows and Linux, FFmpeg must be on PATH and include libx264. The adapter
+  pipes annotated BGR frames directly into FFmpeg and creates H.264/AAC in one
+  pass, with two encoding threads and pipe backpressure. No intermediate MP4 or
+  whole-video frame cache is created; OpenCV's H.264 encoder is not used.
+  Original sound is not analyzed or returned. There
   is still NO frame-by-frame HTTP streaming.
 - Existing Excel/trajectory/heatmap generation runs inside the job's OS temporary
   directory. The server logs a frame/region/tracking summary. Only the video is
@@ -399,5 +401,8 @@ tests the real Python engine with regions created through Java controls on a
 CrossMaze clip, checks the returned region identifiers, and removes all test
 videos and results afterwards.
 
-Video encoding uses OpenCV's documented VideoWriter interface:
-https://docs.opencv.org/4.x/dd/d9e/classcv_1_1VideoWriter.html.
+Video encoding uses FFmpeg's rawvideo input and libx264 encoder:
+https://ffmpeg.org/ffmpeg-formats.html#rawvideo and
+https://ffmpeg.org/ffmpeg-codecs.html#libx264_002c-libx264rgb.
+`scripts/test_mp4_encoder.py` verifies real H.264/AAC output, dimensions, frame
+count and decoded pixels while OpenCV's VideoWriter is unavailable.

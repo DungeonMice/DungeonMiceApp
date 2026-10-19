@@ -207,7 +207,10 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
 
     private Node central(Node content) {
         StackPane column = new StackPane(content); column.getStyleClass().add("form-column"); column.setMaxWidth(550);
-        StackPane surrounding = new StackPane(column); surrounding.getStyleClass().add("form-surrounding"); return surrounding;
+        StackPane surrounding = new StackPane(column); surrounding.getStyleClass().add("form-surrounding");
+        // Translated form children must not extend the center's mouse-picking area over the title bar.
+        Rectangle clip = new Rectangle(); clip.widthProperty().bind(surrounding.widthProperty()); clip.heightProperty().bind(surrounding.heightProperty()); surrounding.setClip(clip);
+        return surrounding;
     }
 
     private Node login() {

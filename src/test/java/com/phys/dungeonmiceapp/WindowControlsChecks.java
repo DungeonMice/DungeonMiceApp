@@ -24,29 +24,40 @@ public final class WindowControlsChecks extends Application {
     private WorkspaceView view;
     private Rectangle2D original;
     private boolean closing;
+    private javafx.scene.robot.Robot pointer;
 
     @Override public void start(Stage stage) throws Exception {
         this.stage = stage;
         System.setProperty("dungeonmice.database", Files.createTempDirectory("window-checks-").resolve("data/database.enc").toString());
         DatabaseManager.connect();
         view = new WorkspaceView(stage);
-        Scene scene = new Scene(view, 1000, 740);
+        boolean large = getParameters().getRaw().contains("--large");
+        Scene scene = new Scene(view, large ? 1440 : 1000, large ? 900 : 740);
         scene.getStylesheets().add(App.class.getResource("/styles/workspace.css").toExternalForm());
         stage.initStyle(StageStyle.UNDECORATED); stage.setScene(scene); stage.show(); stage.centerOnScreen();
+        if (getParameters().getRaw().contains("--register")) {
+            for (javafx.scene.Node node : view.lookupAll(".button")) if (node instanceof Button && "Crear cuenta".equals(((Button) node).getText())) { ((Button) node).fire(); break; }
+        }
+        if (getParameters().getRaw().contains("--pointer")) {
+            pointer = new javafx.scene.robot.Robot(); stage.setAlwaysOnTop(true); stage.toFront(); stage.requestFocus();
+        }
         later(() -> {
+            check(view.getCenter().localToScene(view.getCenter().getBoundsInLocal()).getMinY() >= view.getTop().localToScene(view.getTop().getLayoutBounds()).getMaxY(), "Unauthenticated form cannot overlap or intercept the title bar");
             original = bounds(); click("window-maximize");
             later(() -> {
                 Rectangle2D available = Screen.getScreensForRectangle(stage.getX(), stage.getY(), stage.getWidth(), stage.getHeight()).get(0).getVisualBounds();
                 check(equal(bounds(), available), "Maximize fills working area: " + bounds() + " expected " + available); click("window-maximize");
                 later(() -> {
                     check(equal(bounds(), original), "Restore preserves original bounds");
-                    Button maximize = (Button) view.lookup("#window-maximize");
-                    javafx.event.Event.fireEvent(maximize, new MouseEvent(MouseEvent.MOUSE_CLICKED, 15, 15, 15, 15,
-                            MouseButton.PRIMARY, 2, false, false, false, false, false, false, false, false, false, true,
-                            new PickResult(maximize, 15, 15)));
-                    check(equal(bounds(), original), "Button double click does not trigger title-bar maximize");
-                    view.getCenter().setDisable(true);
-                    check(!view.lookup("#window-minimize").isDisabled() && !view.lookup("#window-close").isDisabled(), "Window controls remain enabled while content is busy");
+                    if (pointer == null) {
+                        Button maximize = (Button) view.lookup("#window-maximize");
+                        javafx.event.Event.fireEvent(maximize, new MouseEvent(MouseEvent.MOUSE_CLICKED, 15, 15, 15, 15,
+                                MouseButton.PRIMARY, 2, false, false, false, false, false, false, false, false, false, true,
+                                new PickResult(maximize, 15, 15)));
+                        check(equal(bounds(), original), "Button double click does not trigger title-bar maximize");
+                        view.getCenter().setDisable(true);
+                        check(!view.lookup("#window-minimize").isDisabled() && !view.lookup("#window-close").isDisabled(), "Window controls remain enabled while content is busy");
+                    }
                     click("window-minimize");
                     later(() -> {
                         check(stage.isIconified(), "Minimize reaches native window"); stage.setIconified(false); stage.toFront();
@@ -71,6 +82,19 @@ public final class WindowControlsChecks extends Application {
         check(button.getGraphic().isMouseTransparent(), "Icon does not intercept button input: " + id);
         javafx.geometry.Point2D scene = button.localToScene(39.5, 37.5);
         javafx.geometry.Point2D screen = button.localToScreen(39.5, 37.5);
+        if (pointer != null) {
+            javafx.geometry.Point2D target = button.localToScreen(20, 19);
+            // Allow native hover and button transitions to run between move, press and release.
+            pointer.mouseMove(target);
+            PauseTransition hover = new PauseTransition(Duration.millis(120));
+            hover.setOnFinished(e -> {
+                pointer.mousePress(MouseButton.PRIMARY);
+                PauseTransition release = new PauseTransition(Duration.millis(60));
+                release.setOnFinished(event -> pointer.mouseRelease(MouseButton.PRIMARY));
+                release.play();
+            });
+            hover.play(); return;
+        }
         javafx.event.Event.fireEvent(button, new MouseEvent(MouseEvent.MOUSE_PRESSED, scene.getX(), scene.getY(), screen.getX(), screen.getY(),
                 MouseButton.PRIMARY, 1, false, false, false, false, true, false, false, false, false, true,
                 new PickResult(button, scene.getX(), scene.getY())));

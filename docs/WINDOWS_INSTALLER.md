@@ -60,7 +60,9 @@ processing, all three views, bounded cache, lifecycle, missing-payload failure,
 unchanged original video and no writes to the installation tree. Use
 `-Experiment CrossMaze -VideoDirectory 'C:\path\to\CrossMaze'` for the other engine.
 
-The default build version on `flag` is 1.0.6; use `-Version` for a subsequent release.
+The default build version on `flag` is 1.0.7; use `-Version` for a subsequent release.
+This version fixes title-bar picking before login and uses system FFmpeg's libx264
+encoder for optional MP4 export, instead of requiring an OpenCV H.264 encoder.
 This release includes persistent event frame markers for review after analysis;
 see `DUNGEONMICE_BRIDGE.md` for the flag workflow.
 The installer uses the existing yellow mouse logo on its welcome/completion

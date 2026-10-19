@@ -224,7 +224,7 @@ def build(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", default="1.0.6")
+    parser.add_argument("--version", default="1.0.7")
     parser.add_argument("--python-project", type=Path, default=ROOT.parent / "DungeonMice")
     parser.add_argument("--output", type=Path, default=ROOT / "dist/linux")
     cache_root = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".cache")))
