@@ -13,6 +13,16 @@ https://github.com/caprica/vlcj and https://github.com/caprica/vlcj-javafx.
 Review their distribution requirements before distributing a combined application.
 The native VLC libraries have their own licenses; see https://www.videolan.org/legal.html.
 
+# Linux Runtime Bundle
+
+The Linux tarball separately includes Eclipse Temurin Java 17 (including its
+legal notices), Astral python-build-standalone and Linux dependency wheels.
+Pinned URLs/hashes are in `scripts/linux-bundle-lock.json`. Runtime archive
+notices and wheel `.dist-info` licenses remain in the tarball. Source projects:
+https://adoptium.net/ and https://github.com/astral-sh/python-build-standalone.
+Linux VLC/FFmpeg are installed through the distribution package manager and
+are not vendored into the portable archive.
+
 # Windows Python bundle
 
 The Windows app-image includes the official embedded Python distribution and

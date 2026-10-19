@@ -1,0 +1,37 @@
+{
+  "architecture": "x86_64",
+  "minimumGlibc": "2.28",
+  "pythonVersion": "3.14.8",
+  "java": {
+    "file": "OpenJDK17U-jre_x64_linux_hotspot_17.0.20.1_1.tar.gz",
+    "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jre_x64_linux_hotspot_17.0.20.1_1.tar.gz",
+    "sha256": "0b2b640e3046b64c8ec504de0ab9d91bb5610182bda21fad454681ce54d45a62"
+  },
+  "python": {
+    "file": "cpython-3.14.8+20261013-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.14.8%2B20261013-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+    "sha256": "d8faa1b588506b9e3e5a3f57807bb056d534a1641a6b10d15b6ea3f0b413b960"
+  },
+  "packages": [
+    {
+      "file": "numpy-2.5.3-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/45/8f/9beacf79ca7c650688ad0baa80931adb988fe6e6e5d5903c23cc3dbd70eb/numpy-2.5.3-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "b0521d0f4aebb6e06189451025fa17a913287b13c03d5fe05c017333b654ea5b"
+    },
+    {
+      "file": "opencv_contrib_python-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/8b/39/f87d154d2dca8e9815ca9e4f925aee41e5931162da730d17f3200e7786f3/opencv_contrib_python-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl",
+      "sha256": "8427dcb0561dc3ba32f3771c627f52b87c29932c265bea28ffcb54804c3c3fec"
+    },
+    {
+      "file": "openpyxl-3.1.5-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl",
+      "sha256": "5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2"
+    },
+    {
+      "file": "et_xmlfile-2.0.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/c1/8b/5fe2cc11fee489817272089c4203e679c63b570a5aaeb18d852ae3cbba6a/et_xmlfile-2.0.0-py3-none-any.whl",
+      "sha256": "7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa"
+    }
+  ]
+}

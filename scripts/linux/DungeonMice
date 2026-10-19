@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+APP_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
+    printf '%s\n' 'Este paquete requiere Linux x86_64.' >&2
+    exit 1
+fi
+if [ ! -x "$APP_ROOT/runtime/bin/java" ] || [ ! -x "$APP_ROOT/backend/runtime/python/bin/python3" ]; then
+    printf '%s\n' 'Paquete incompleto. Extrae de nuevo el archivo tar.gz conservando sus permisos.' >&2
+    exit 1
+fi
+exec "$APP_ROOT/runtime/bin/java" "-Ddungeonmice.app.root=$APP_ROOT" -cp "$APP_ROOT/app/DungeonMiceApp-1.0-SNAPSHOT.jar" com.phys.dungeonmiceapp.App "$@"

@@ -41,7 +41,7 @@ public final class ManagedPythonBridge implements AutoCloseable {
     private void launch() {
         try {
             Path root = applicationRoot();
-            boolean packaged = Files.isRegularFile(root.resolve("DungeonMice.exe"));
+            boolean packaged = packagedRoot(root);
             Path payload = packaged ? root.resolve("backend") : root;
             Path project = Paths.get(System.getProperty("dungeonmice.python.project",
                     (packaged ? payload.resolve("engine") : root.resolveSibling("DungeonMice")).toString())).toAbsolutePath();
@@ -51,7 +51,9 @@ public final class ManagedPythonBridge implements AutoCloseable {
             Path executable = pythonExecutable(payload, project, packaged);
             List<String> command = new ArrayList<>(Arrays.asList(executable.toString(), "-B"));
             if (packaged) command.addAll(Arrays.asList("-I", "-X", "utf8"));
-            command.addAll(Arrays.asList(script.toString(), "--python-project", project.toString(), "--port", "0"));
+            Path entry = packaged && !windows() ? payload.resolve("scripts/python_bootstrap.py") : script;
+            if (!Files.isRegularFile(entry)) throw new IOException("Falta el iniciador Python del paquete: " + entry);
+            command.addAll(Arrays.asList(entry.toString(), "--python-project", project.toString(), "--port", "0"));
             String config = System.getProperty("dungeonmice.python.config");
             if (config != null && !config.isBlank()) command.addAll(Arrays.asList("--config", Paths.get(config).toAbsolutePath().toString()));
             Path working = packaged ? com.phys.dungeonmiceapp.config.AppPaths.userDataDirectory().resolve("analysis") : root;
@@ -100,13 +102,16 @@ public final class ManagedPythonBridge implements AutoCloseable {
         Path location = Paths.get(ManagedPythonBridge.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         if (Files.isRegularFile(location)) location = location.getParent();
         // Installed app-images must never silently fall back to a development checkout.
-        if (location.getParent() != null && Files.isRegularFile(location.getParent().resolve("DungeonMice.exe"))) return location.getParent();
+        if (location.getParent() != null && packagedRoot(location.getParent())) return location.getParent();
         for (Path candidate = location; candidate != null; candidate = candidate.getParent())
             if (Files.isRegularFile(candidate.resolve("scripts/dungeonmice_api_bridge.py"))) return candidate;
         Path cwd = Paths.get("").toAbsolutePath();
         if (Files.isRegularFile(cwd.resolve("scripts/dungeonmice_api_bridge.py"))) return cwd;
         throw new IOException("No se encontro el directorio de la aplicacion Java.");
     }
+
+    private static boolean windows() { return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows"); }
+    private static boolean packagedRoot(Path root) { return Files.isRegularFile(root.resolve("DungeonMice.exe")) || Files.isRegularFile(root.resolve("DungeonMice")); }
 
     private static Path pythonExecutable(Path root, Path project, boolean packaged) throws IOException {
         String explicit = System.getProperty("dungeonmice.python.executable", System.getenv("DUNGEONMICE_PYTHON"));
@@ -116,13 +121,14 @@ public final class ManagedPythonBridge implements AutoCloseable {
             return path;
         }
         List<Path> candidates = new ArrayList<>();
-        candidates.add(root.resolve("runtime/python/python.exe"));
+        candidates.add(root.resolve(windows() ? "runtime/python/python.exe" : "runtime/python/bin/python3"));
         if (packaged) {
             Path bundled = candidates.get(0);
-            if (!Files.isRegularFile(bundled)) throw new IOException("Falta Python en el paquete instalado: " + bundled + ". Reconstruye el instalador completo.");
+            if (!Files.isRegularFile(bundled) || (!windows() && !Files.isExecutable(bundled))) throw new IOException("Falta Python en el paquete instalado: " + bundled + ". Reconstruye el instalador completo.");
             return bundled;
         }
         candidates.add(project.resolve(".venv/Scripts/python.exe"));
+        candidates.add(project.resolve(".venv/bin/python3"));
         String local = System.getenv("LOCALAPPDATA");
         if (local != null) {
             candidates.add(Paths.get(local, "DungeonMice/api-venv/Scripts/python.exe"));
