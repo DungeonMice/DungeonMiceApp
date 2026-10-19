@@ -60,7 +60,9 @@ processing, all three views, bounded cache, lifecycle, missing-payload failure,
 unchanged original video and no writes to the installation tree. Use
 `-Experiment CrossMaze -VideoDirectory 'C:\path\to\CrossMaze'` for the other engine.
 
-The default build version is 1.0.5; use `-Version` for a subsequent release.
+The default build version on `flag` is 1.0.6; use `-Version` for a subsequent release.
+This release includes persistent event frame markers for review after analysis;
+see `DUNGEONMICE_BRIDGE.md` for the flag workflow.
 The installer uses the existing yellow mouse logo on its welcome/completion
 pages and header. Its square artwork keeps its aspect ratio within the portrait
 wizard area; the same mouse icon remains on the setup EXE and shortcuts.
@@ -70,6 +72,7 @@ wizard area; the same mouse icon remains on the setup EXE and shortcuts.
 Default database: `%LOCALAPPDATA%\DungeonMice\data\database.enc`.
 Profile photos: `%LOCALAPPDATA%\DungeonMice\data\profiles`.
 Python working directory: `%LOCALAPPDATA%\DungeonMice\analysis`.
+Saved event markers and snapshots: `%LOCALAPPDATA%\DungeonMice\events`.
 The app creates these directories at runtime as the logged-in user. No elevated
 permissions or writable application install directory are needed for these files.
 The working directory no longer determines the default database location.
