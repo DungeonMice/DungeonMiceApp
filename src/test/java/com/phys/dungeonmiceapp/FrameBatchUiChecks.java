@@ -36,6 +36,7 @@ public final class FrameBatchUiChecks extends Application {
         try {
             temporary = Files.createTempDirectory("dungeonmice-frame-batch-");
             System.setProperty("dungeonmice.database", temporary.resolve("data/database.enc").toString());
+            System.setProperty("dungeonmice.events.directory", temporary.resolve("events").toString());
             System.setProperty("dungeonmice.storage", temporary.resolve("app").toString()); Files.createDirectories(temporary.resolve("app"));
             DatabaseManager.connect(); SessionManager.setCurrentUser(UserRepository.login("admin", "admin123"));
             project = VideoGroupRepository.saveProject(null, "Frame batch", "", "", "", "", "").getId();
@@ -83,6 +84,7 @@ public final class FrameBatchUiChecks extends Application {
         }
         await(() -> workspace.lookup("#analysis-frame") != null && ((ImageView) workspace.lookup("#analysis-frame")).getImage() != null, () -> {
             check(((Button) workspace.lookup("#region-add")).isDisabled(), "Region edits locked during batch");
+            check(((TabPane) workspace.lookup("#video-inspector")).getTabs().get(1).isDisabled(), "Event logs locked throughout batch analysis");
             snapshot();
             fire("frame-pause"); delay(400, () -> {
                 double paused = ((ProgressBar) workspace.lookup("#processing-progress")).getProgress();
@@ -116,6 +118,8 @@ public final class FrameBatchUiChecks extends Application {
                     if (saved.text.startsWith("Analisis por frames completado")) complete = saved;
                 }
                 check(complete != null && complete.frame == 60 && Math.abs(complete.seconds - 2.0) < .001, "Batch persists the native frame and time separately for " + video.getTitle());
+                try { check(complete.archive != null && EventFrameArchive.load(video.getOwnerId(), video.getId(), complete).metadata.get("index").getAsInt() == 60, "Batch retains a persistent event snapshot for " + video.getTitle()); }
+                catch (java.io.IOException error) { throw new RuntimeException(error); }
             }
             await(this::originalReady, this::checkIndividualCompletion);
         });
@@ -123,10 +127,10 @@ public final class FrameBatchUiChecks extends Application {
     private void checkIndividualCompletion() {
         fire("python-process");
         await(() -> status().getText().startsWith("Completado"), () -> {
-            check(((ProgressBar) workspace.lookup("#frame-progress")).getProgress() == 1, "Individual progress reaches 100 percent at EOF");
-            check(((Label) workspace.lookup("#frame-progress-label")).getText().contains("100%"), "Individual completion label shows final percentage");
-            fire("python-cancel");
-            check(!status().textProperty().isBound(), "Individual progress bindings released on cancellation");
+            check(((ProgressBar) workspace.lookup("#processing-progress")).getProgress() == 1, "Individual progress reaches 100 percent at EOF");
+            check(status().getText().contains("100%"), "Individual completion label shows final percentage");
+            check(!((TabPane) workspace.lookup("#video-inspector")).getTabs().get(1).isDisabled(), "Logs unlock after individual analysis");
+            check(!status().textProperty().isBound(), "Individual progress bindings released on completion");
             await(this::originalReady, () -> {
                 confirmBatch(ButtonType.OK);
                 await(() -> workspace.lookup("#analysis-frame") != null && ((ImageView) workspace.lookup("#analysis-frame")).getImage() != null, () -> {

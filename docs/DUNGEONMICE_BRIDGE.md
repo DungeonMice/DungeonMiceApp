@@ -1,5 +1,51 @@
 # Connecting the real DungeonMice Python app
 
+## Flag Branch: Persistent Event Frames
+
+The local `flag` branch starts from `api` and uses its unchanged per-frame engine.
+Java writes a marker and compressed snapshot only for region transitions, the
+initial/final frame and user pause events. It does not create a processed video
+or retain every frame. A snapshot contains the video, detection and trajectory
+JPEGs already supplied by Python, plus the native frame/time/region metadata.
+
+Each analysis has an independent run ID. Its `markers.json` and `<frame>.frame`
+files live in `%LOCALAPPDATA%\DungeonMice\events\<owner>\<video>\<run>`, outside
+the Java/Python repositories. The marker file stores the original path, source
+size/modification date, region configuration and completed/cancelled/failed state.
+Only marker references and existing log metadata are persisted in the database;
+images remain on disk. Reanalysis preserves prior runs. Storage grows with the
+number of event frames, not the full frame count; saved events persist across
+application restarts and are not the temporary rolling playback cache.
+
+The Registros tab is unavailable throughout individual/batch processing, including
+pauses. Once processing ends or is stopped, double-clicking an archived event
+opens its exact saved frame in the workspace, with tabs for its three views.
+Review does not seek/decode the source or call Python, so the snapshot remains
+usable even if the original file is unavailable. Missing/corrupt snapshots show
+an explicit error. Older diagnostic logs without an archive reference retain
+the original timestamp-review behavior. Event viewing temporarily hides the
+processing controls to keep the log list usable in compact windows.
+
+Archive writes and event image reads run off the JavaFX thread; each snapshot
+and marker manifest is published through a temporary file and atomic replacement
+where supported. Cancelling leaves the events already captured, marked incomplete.
+A forced exit can leave a run marked `running`; successfully published markers
+remain readable. No original file in the separate Python project is edited.
+
+Validation:
+
+```powershell
+.\scripts\check-flag-events.ps1
+.\scripts\check-flag-events.ps1 -NativeVideoDirectory C:\Users\Usuario\Downloads\MorrisPool
+.\scripts\check-frame-batch.ps1
+```
+
+The checks cover sparse event storage, exact timestamps/pixels, source removal,
+separate owners/runs, missing snapshots, offline review after rebuilding the
+workspace, log locking during processing/pauses, compact layout and batch runs.
+The optional native-video check traverses a full Morris video past cache eviction
+and verifies that the saved first event survives analyzer cleanup.
+
 All adapter files live in the Java repository on branch `api`. No existing file in
 `F:\JavaApps\DungeonMice` needs to be edited. RunExperiment, MouseTracker, EventLogic,
 ExperimentVisualizer, the JSON loader and labyrinth report generation are imported

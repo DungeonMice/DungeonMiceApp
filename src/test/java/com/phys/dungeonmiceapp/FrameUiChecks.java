@@ -31,6 +31,7 @@ public final class FrameUiChecks extends Application {
         this.stage = stage;
         try {
             temporary = Files.createTempDirectory("dungeonmice-frame-ui-");
+            System.setProperty("dungeonmice.events.directory", temporary.resolve("events").toString());
             System.setProperty("dungeonmice.database", temporary.resolve("data/database.enc").toString()); System.setProperty("dungeonmice.storage", temporary.resolve("app").toString());
             Files.createDirectories(temporary.resolve("app")); DatabaseManager.connect(); SessionManager.setCurrentUser(UserRepository.login("admin", "admin123"));
             VideoGroup group = VideoGroupRepository.saveProject(null, "Frames", "", "", "", "", "");
@@ -73,9 +74,10 @@ public final class FrameUiChecks extends Application {
                         check(player().progressProperty().get() == paused, "Pausing main UI stops frame analysis requests");
                         check(((ProgressBar) workspace.lookup("#frame-progress")).getProgress() == paused, "Visible frame progress stays fixed while paused");
                         check(((Label) workspace.lookup("#processing-status")).getText().startsWith("Pausado"), "Sidebar reports the individual analysis state");
-                        ((TabPane) workspace.lookup("#video-inspector")).getSelectionModel().select(1); workspace.applyCss(); workspace.layout();
-                        @SuppressWarnings("unchecked") ListView<ActivityLog.Entry> logs = (ListView<ActivityLog.Entry>) workspace.lookup("#activity-log");
-                        ActivityLog.Entry pause = logs.getItems().stream().filter(entry -> entry.text.equals("Analisis pausado")).reduce((a, b) -> b).orElseThrow();
+                        check(((TabPane) workspace.lookup("#video-inspector")).getTabs().get(1).isDisabled(), "Logs remain inaccessible while analysis is paused");
+                        List<ActivityLog.Entry> savedLogs = new ArrayList<>();
+                        for (JsonElement entry : VideoRepository.findActivity(VideoRepository.findByGroup(projectId).get(0).getId())) savedLogs.add(ActivityLog.Entry.fromJson(entry.getAsJsonObject()));
+                        ActivityLog.Entry pause = savedLogs.stream().filter(entry -> entry.text.equals("Analisis pausado")).reduce((a, b) -> b).orElseThrow();
                         check(pause.frame > 0 && pause.seconds > 0 && ((Label) workspace.lookup("#frame-clock")).getText().startsWith(pause.time), "Individual frame logs carry native nonzero time and frame, not the disposed player's clock");
                         check(player().reviewFrame(Math.max(1, pause.frame - 1)), "Saved frame can be reviewed inside the bounded cache");
                         check(ProcessedVideoRepository.findByProject(projectId).isEmpty(), "Live frame analysis never registers a processed MP4");
@@ -92,41 +94,16 @@ public final class FrameUiChecks extends Application {
                                 snapshot("frames-1000x740.png"); Node next = workspace.lookup("#frame-next");
                                 check(next.localToScene(next.getBoundsInLocal()).getMaxY() <= stage.getScene().getHeight(), "Frame controls fit compact window");
                                 Node progressNode = workspace.lookup("#frame-progress"); check(progressNode.localToScene(progressNode.getBoundsInLocal()).getMaxY() <= stage.getScene().getHeight(), "Individual progress fits compact window");
-                                checkInlineReview(() -> {
+                                fire("python-cancel"); check(!((TabPane) workspace.lookup("#video-inspector")).getTabs().get(1).isDisabled(), "Stopping analysis unlocks saved event review");
                                 fire("nav-data"); check(workspace.lookup("#frame-player") == null, "Navigation disposes live frame player"); fire("nav-video");
                                 await(() -> workspace.lookup("#playback-viewport") != null && ((PlaybackPane) workspace.lookup("#playback-viewport").getParent()).videoReadyProperty().get(), () -> {
                                     check(!((Button) workspace.lookup("#python-process")).isDisabled(), "Original playback and frame action restored after navigation"); Platform.exit();
-                                });
                                 });
                             });
                         });
                     });
                 });
             });
-        });
-    }
-    @SuppressWarnings("unchecked")
-    private void checkInlineReview(Runnable after) {
-        FramePlaybackPane analysis = player(); double progress = analysis.progressProperty().get();
-        ListView<ActivityLog.Entry> logs = (ListView<ActivityLog.Entry>) workspace.lookup("#activity-log");
-        logs.scrollTo(0); workspace.applyCss(); workspace.layout();
-        ActivityLog.Entry previous = logs.getItems().stream().filter(entry -> entry.text.equals("Registro de analisis anterior")).findFirst().orElseThrow();
-        ListCell<?> cell = logs.lookupAll(".list-cell").stream().filter(node -> node instanceof ListCell && ((ListCell<?>) node).getItem() == previous).map(node -> (ListCell<?>) node).findFirst().orElseThrow();
-        long windows = javafx.stage.Window.getWindows().stream().filter(javafx.stage.Window::isShowing).count();
-        javafx.event.Event.fireEvent(cell, new javafx.scene.input.MouseEvent(javafx.scene.input.MouseEvent.MOUSE_CLICKED, 4, 4, 4, 4, javafx.scene.input.MouseButton.PRIMARY, 2, false, false, false, false, false, false, false, false, false, true, null));
-        await(() -> {
-            Node viewport = workspace.lookup("#log-review #playback-viewport");
-            if (viewport == null) return false;
-            PlaybackPane review = (PlaybackPane) viewport.getParent();
-            return review.getPlayer() != null && review.getPlayer().getStatus() == javafx.scene.media.MediaPlayer.Status.PAUSED && Math.abs(review.getPlayer().getCurrentTime().toSeconds() - 2.0) < .25;
-        }, () -> {
-            check(javafx.stage.Window.getWindows().stream().filter(javafx.stage.Window::isShowing).count() == windows, "Uncached log opens at its timestamp inside the workspace without another window");
-            check(analysis.progressProperty().get() == progress, "Inline original review does not advance or restart analysis");
-            PlaybackPane review = (PlaybackPane) workspace.lookup("#log-review #playback-viewport").getParent(); DirectPlayer decoder = review.getPlayer();
-            snapshot("inline-log-review-1000x740.png"); fire("close-log-review");
-            check(workspace.lookup("#log-review") == null && workspace.lookup("#frame-player") == analysis, "Back action restores the same paused analysis and cached views");
-            check(decoder.getStatus() == javafx.scene.media.MediaPlayer.Status.DISPOSED, "Closing inline review releases its VLC decoder");
-            after.run();
         });
     }
     private void delay(int millis, Runnable action) { PauseTransition timer = new PauseTransition(Duration.millis(millis)); timer.setOnFinished(event -> safe(action)); timer.play(); }

@@ -518,7 +518,10 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         TabPane inspector = new TabPane(); inspector.setId("video-inspector"); inspector.getStyleClass().add("inspector-tabs"); inspector.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE); inspector.setMinHeight(0);
         ScrollPane regionScroll = new ScrollPane(regions); regionScroll.setFitToWidth(true); regionScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER); regionScroll.getStyleClass().add("plain-scroll");
         Tab regionTab = new Tab("Regiones", regionScroll); Tab logTab = new Tab("Registros", new ActivityLog(history)); inspector.getTabs().addAll(regionTab, logTab);
+        logTab.setId("video-log-tab"); logTab.disableProperty().bind(processingBusy);
+        logTab.disabledProperty().addListener((obs, old, active) -> { if (active) inspector.getSelectionModel().select(regionTab); });
         choices.valueProperty().addListener((obs, old, item) -> {
+            closeLogReview();
             selectedVideo = item; regions.setVideo(item);
             logTab.setContent(item == null ? new ActivityLog(history) : videoLogPane(item, player));
             if (item != null) openVideo(player, MediaFiles.resolve(item.getFilePath()), false); else { cancelPreparation(player); player.close(); }
@@ -579,18 +582,65 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
         return new ActivityLog(historyFor(video), entry -> reviewLog(video, entry, player));
     }
     private void showVideoLogs(Video video, PlaybackPane player) {
+        closeLogReview();
         TabPane inspector = (TabPane) lookup("#video-inspector");
         if (inspector != null) inspector.getTabs().get(1).setContent(videoLogPane(video, player));
     }
     private void reviewLog(Video video, ActivityLog.Entry entry, PlaybackPane player) {
-        if (!Double.isFinite(entry.seconds)) return;
+        if (processingBusy.get() || !Double.isFinite(entry.seconds)) return;
         closeLogReview();
+        if (entry.archive != null) { showEventReview(video, entry, player); return; }
         if (framePlayer != null && selectedVideo != null && selectedVideo.getId().equals(video.getId()) && entry.frame > 0 && framePlayer.reviewFrame(entry.frame)) return;
         if (frameBatch != null && entry.frame > 0 && frameBatch.reviewFrame(video.getId(), entry.frame)) return;
         if (framePlayer != null || frameBatch != null || selectedVideo == null || !selectedVideo.getId().equals(video.getId())) {
             if (framePlayer != null) framePlayer.pause(); if (frameBatch != null) frameBatch.pause();
             showLogReview(video, entry, player);
         } else if (player.videoReadyProperty().get()) player.reviewAt(entry.seconds);
+    }
+
+    private void showEventReview(Video video, ActivityLog.Entry entry, PlaybackPane original) {
+        if (!SessionManager.isLoggedIn() || !video.getOwnerId().equals(SessionManager.getCurrentUser().getId())) return;
+        Node current = frameBatch != null ? frameBatch : framePlayer != null ? framePlayer : original;
+        if (!(current.getParent() instanceof BorderPane)) return;
+        BorderPane page = (BorderPane) current.getParent(); original.pause();
+        Label title = new Label(entry.time + "  |  Frame " + entry.frame + "  |  " + entry.text);
+        title.setId("event-marker"); title.setWrapText(true); title.setMinWidth(0); title.setMaxWidth(Double.MAX_VALUE); HBox.setHgrow(title, Priority.ALWAYS);
+        Button back = button("Volver al video", "outline", this::closeLogReview); back.setId("close-log-review"); back.setMinWidth(Region.USE_PREF_SIZE);
+        HBox toolbar = new HBox(12, title, back); toolbar.setAlignment(Pos.CENTER_LEFT);
+        ImageView image = new ImageView(); image.setId("event-frame"); image.setPreserveRatio(true); image.setMouseTransparent(true);
+        Label state = new Label("Cargando captura del evento..."); state.setWrapText(true); state.getStyleClass().add("playback-status");
+        StackPane viewport = new StackPane(image, state); viewport.setMinSize(0, 180); viewport.getStyleClass().add("playback-viewport");
+        image.fitWidthProperty().bind(viewport.widthProperty().subtract(2)); image.fitHeightProperty().bind(viewport.heightProperty().subtract(2));
+        TabPane views = new TabPane(); views.setId("event-views"); views.getStyleClass().add("inspector-tabs"); views.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE); views.setMinHeight(44); views.setPrefHeight(44); views.setMaxHeight(44);
+        VBox content = new VBox(10, toolbar, views, viewport); content.setId("event-review"); content.setMinSize(0, 0); content.setPadding(new Insets(12, 16, 16, 16)); VBox.setVgrow(viewport, Priority.ALWAYS);
+        Task<Map<String, Image>> task = new Task<Map<String, Image>>() {
+            @Override protected Map<String, Image> call() throws Exception {
+                com.phys.dungeonmiceapp.api.PythonFrameClient.Frame frame = EventFrameArchive.load(video.getOwnerId(), video.getId(), entry);
+                Map<String, Image> decoded = new LinkedHashMap<>();
+                for (Map.Entry<String, byte[]> view : frame.views.entrySet()) {
+                    Image value = new Image(new java.io.ByteArrayInputStream(view.getValue()));
+                    if (value.isError()) throw new IOException("La captura guardada no se pudo leer");
+                    decoded.put(view.getKey(), value);
+                }
+                return decoded;
+            }
+        };
+        task.setOnSucceeded(event -> {
+            if (page.getCenter() != content) return;
+            Map<String, Image> decoded = task.getValue();
+            for (String key : decoded.keySet()) { Tab tab = new Tab(key.equals("video") ? "Video" : key.equals("detection") ? "Deteccion" : "Trayectoria"); tab.setUserData(key); views.getTabs().add(tab); }
+            views.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> { if (selected != null) image.setImage(decoded.get(selected.getUserData().toString())); });
+            views.getSelectionModel().select(0); image.setImage(decoded.get("video")); state.setVisible(false);
+        });
+        task.setOnFailed(event -> { if (page.getCenter() == content) state.setText("No se pudo abrir la captura guardada: " + task.getException().getMessage()); });
+        Node processing = lookup("#processing-panel");
+        if (processing != null) { processing.setVisible(false); processing.setManaged(false); }
+        restoreLogReview = () -> {
+            task.cancel(true); image.setImage(null);
+            if (processing != null) { processing.setVisible(true); processing.setManaged(true); }
+            if (page.getCenter() == content) page.setCenter(current);
+        };
+        page.setCenter(content); files.submit(task);
     }
 
     private void showLogReview(Video video, ActivityLog.Entry entry, PlaybackPane original) {
@@ -821,7 +871,16 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
                     if (closed || frameGeneration != generation || !busy.get() || restoreOriginal == null) return;
                     if (failure != null) { cancelApi(); status.setText("No se pudo liberar la sesion anterior. Reinicia la aplicacion."); return; }
                     framePlayer = new FramePlaybackPane(client, MediaFiles.resolve(source.getFilePath()).toPath(), payload,
-                            entry -> logVideo(source, entry));
+                            entry -> logVideo(source, entry), source.getOwnerId(), source.getId());
+                    FramePlaybackPane active = framePlayer;
+                    active.setOnFinished(error -> {
+                        if (closed || framePlayer != active) return;
+                        String summary = active.messageProperty().get();
+                        frameRelease = active.closeAsync(); framePlayer = null; restoreOriginal = null;
+                        progress.progressProperty().unbind(); status.textProperty().unbind();
+                        page.setCenter(player); busy.set(false); status.setText(summary); flushActivity();
+                        showVideoLogs(source, player); openVideo(player, MediaFiles.resolve(source.getFilePath()), false);
+                    });
                     page.setCenter(framePlayer);
                     progress.progressProperty().bind(framePlayer.progressProperty()); status.textProperty().bind(framePlayer.messageProperty()); framePlayer.play();
                 }));
@@ -906,7 +965,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
             if (item == null) { cancelPreparation(player); player.close(); name.setText("Selecciona un resultado"); details.setText(""); state.setText(""); return; }
             Video source = VideoRepository.findByGroup(projectId).stream().filter(video -> video.getId().equals(item.getSourceId())).findFirst().orElse(null);
             if (source != null) {
-                ActivityLog logs = new ActivityLog(historyFor(source), entry -> { if (player.videoReadyProperty().get()) player.reviewAt(entry.seconds); });
+                ActivityLog logs = new ActivityLog(historyFor(source), entry -> { if (entry.archive != null) reviewLog(source, entry, player); else if (player.videoReadyProperty().get()) player.reviewAt(entry.seconds); });
                 VBox.setVgrow(logs, Priority.ALWAYS); logContent.getChildren().add(logs);
             }
             selectedProcessedId = item.getId(); name.setText(item.getFilename());

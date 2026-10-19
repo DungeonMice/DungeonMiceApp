@@ -12,7 +12,7 @@ import javafx.beans.property.*;
 import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
 
-/** Sequential, demand-paced analysis. No exported video or persistent frame cache. */
+/** Sequential analysis retaining only event snapshots on disk. */
 public final class FrameBatchPane extends BorderPane implements AutoCloseable {
     private final List<Video> videos;
     private final Map<String, JsonArray> regions = new HashMap<>();
@@ -51,7 +51,7 @@ public final class FrameBatchPane extends BorderPane implements AutoCloseable {
         message.set((index + 1) + "/" + videos.size() + " - " + video.getTitle());
         try {
             current = new FramePlaybackPane(new PythonFrameClient(address, token), MediaFiles.resolve(video.getFilePath()).toPath(),
-                    regions.get(video.getId()), text -> log.accept(video, text));
+                    regions.get(video.getId()), text -> log.accept(video, text), video.getOwnerId(), video.getId());
             current.progressProperty().addListener((obs, old, fraction) -> {
                 if (!closed) {
                     double value = Math.max(0, Math.min(1, fraction.doubleValue()));

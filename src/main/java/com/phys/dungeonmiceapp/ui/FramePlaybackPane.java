@@ -42,11 +42,16 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
     private Consumer<Throwable> onFinished = error -> { };
     private boolean finished;
     private CompletableFuture<Void> cleanup;
+    private volatile EventFrameArchive archive;
+    private PythonFrameClient.Frame currentFrame;
 
     public void setOnFinished(Consumer<Throwable> callback) { onFinished = Objects.requireNonNull(callback); }
     private void finish(Throwable error) { if (!finished) { finished = true; onFinished.accept(error); } }
 
     public FramePlaybackPane(PythonFrameClient client, Path source, JsonArray regions, Consumer<ActivityLog.Entry> log) {
+        this(client, source, regions, log, null, null);
+    }
+    public FramePlaybackPane(PythonFrameClient client, Path source, JsonArray regions, Consumer<ActivityLog.Entry> log, String ownerId, String videoId) {
         this.client = client; this.log = log;
         setId("frame-player"); setSpacing(8); setMinSize(0, 0); setPadding(new Insets(12, 16, 16, 16));
         image.setPreserveRatio(true); image.setSmooth(true); image.setMouseTransparent(true); image.setId("analysis-frame");
@@ -83,6 +88,7 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         clock.setId("frame-clock"); clock.getStyleClass().add("timecode"); getChildren().addAll(viewTabs, viewport, analysis, clock, timeline, controls);
         request = worker.submit(() -> {
             try {
+                if (ownerId != null) archive = new EventFrameArchive(ownerId, videoId, source, regions);
                 JsonObject info = client.open(source, regions);
                 int count = info.get("total").getAsInt(); double rate = info.get("fps").getAsDouble();
                 if (count <= 0 || !Double.isFinite(rate) || rate <= 0) throw new IllegalArgumentException("Metadatos de video invalidos");
@@ -95,7 +101,16 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         boolean wasPlaying = playing; playing = false; if (ready && !finished) updateMessage("Pausado");
         if (wasPlaying && shown > 0) { if (pending) pauseLogPending = true; else log("Analisis pausado"); }
     }
-    private void log(String text) { log.accept(new ActivityLog.Entry(seconds, shown, text, text.startsWith("Error"))); }
+    private void log(String text) {
+        PythonFrameClient.Frame snapshot = currentFrame;
+        if (archive == null || snapshot == null || finished) { log.accept(new ActivityLog.Entry(seconds, shown, text, text.startsWith("Error"))); return; }
+        worker.submit(() -> {
+            try {
+                ActivityLog.Entry entry = archive.mark(snapshot, text, text.startsWith("Error"));
+                Platform.runLater(() -> { if (!closed) log.accept(entry); });
+            } catch (Exception error) { failed(error); }
+        });
+    }
     public boolean reviewFrame(int index) {
         pause(); if (!ready || pending || closed || index < firstCached || index > processed) return false;
         seek(index); return true;
@@ -115,6 +130,15 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         request = worker.submit(() -> {
             try {
                 PythonFrameClient.Frame frame = client.frame(index);
+                List<ActivityLog.Entry> saved = new ArrayList<>();
+                if (archive != null) {
+                    if (frame != null && index < 0) saved.addAll(archive.capture(frame));
+                    else if (frame == null) {
+                        if (processed != total) throw new java.io.IOException("El analisis termino antes del ultimo frame");
+                        if (currentFrame != null) saved.add(archive.mark(currentFrame, "Analisis por frames completado: " + processed + " frames", false));
+                        archive.finish("completed");
+                    }
+                }
                 Map<String, Image> decoded = new LinkedHashMap<>();
                 if (frame != null) for (Map.Entry<String, byte[]> entry : frame.views.entrySet()) {
                     Image view = new Image(new ByteArrayInputStream(entry.getValue())); if (view.isError()) throw new IllegalArgumentException("Imagen recibida invalida"); decoded.put(entry.getKey(), view);
@@ -122,7 +146,9 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
                 Platform.runLater(() -> {
                     if (closed) return;
                     pending = false; loading.setVisible(false);
-                    if (frame == null) { playing = false; progress.set(1); updateMessage("Completado"); status.setText("Analisis completado"); status.setVisible(true); log("Analisis por frames completado: " + processed + " frames"); finish(null); return; }
+                    saved.forEach(log);
+                    if (frame == null) { playing = false; progress.set(1); updateMessage("Completado"); status.setText("Analisis completado"); status.setVisible(true); if (archive == null) log("Analisis por frames completado: " + processed + " frames"); finish(null); return; }
+                    currentFrame = frame;
                     shown = frame.metadata.get("index").getAsInt();
                     seconds = frame.metadata.get("time").getAsDouble();
                     processed = Math.max(processed, shown);
@@ -137,7 +163,7 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
                     clock.setText(PlaybackPane.format(Duration.seconds(frame.metadata.get("time").getAsDouble())) + "  |  Frame " + shown + "/" + total + "  |  Cache " + firstCached + "-" + processed
                             + (frame.metadata.get("recordingActive").getAsBoolean() ? "" : "  |  Calentamiento"));
                     JsonObject states = frame.metadata.getAsJsonObject("regions");
-                    if (index < 0) {
+                    if (index < 0 && archive == null) {
                         for (String name : states.keySet()) {
                             boolean inside = states.getAsJsonObject(name).get("inside").getAsBoolean();
                             if (previousStates != null && previousStates.has(name) && previousStates.getAsJsonObject(name).get("inside").getAsBoolean() != inside) log(name + ": " + (inside ? "entrada" : "salida"));
@@ -153,7 +179,9 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         });
     }
     private void failed(Exception error) {
-        Platform.runLater(() -> { if (closed) return; pending = false; playing = false; if (progress.get() < 0) progress.set(0); message.set("Error de analisis: " + error.getMessage()); loading.setVisible(false); status.setText(error.getMessage()); status.setVisible(true); log("Error de analisis por frames: " + error.getMessage()); finish(error); });
+        if (closed) return;
+        if (archive != null) try { archive.finish("failed"); } catch (java.io.IOException storageError) { error.addSuppressed(storageError); }
+        Platform.runLater(() -> { if (closed) return; pending = false; playing = false; if (progress.get() < 0) progress.set(0); message.set("Error de analisis: " + error.getMessage()); loading.setVisible(false); status.setText(error.getMessage()); status.setVisible(true); log.accept(new ActivityLog.Entry(seconds, shown, "Error de analisis por frames: " + error.getMessage(), true)); finish(error); });
     }
     private static Button button(String text, String id, String tooltip, Runnable action) {
         Button button = new Button(text); button.setId(id); button.getStyleClass().add("icon-button"); button.setTooltip(new Tooltip(tooltip)); button.setAccessibleText(tooltip); button.setOnAction(event -> action.run()); return button;
@@ -172,12 +200,14 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
     public CompletableFuture<Void> closeAsync() {
         if (cleanup != null) return cleanup;
         cleanup = new CompletableFuture<>(); closed = true; playing = false;
-        if (request != null) request.cancel(true); worker.shutdownNow(); image.setImage(null); currentViews = Collections.emptyMap();
+        if (request != null) request.cancel(true); worker.shutdownNow(); image.setImage(null); currentViews = Collections.emptyMap(); currentFrame = null;
         // Wait for an in-flight open/next before deleting the server's single session.
         Thread thread = new Thread(() -> {
             try {
                 if (!worker.awaitTermination(35, TimeUnit.SECONDS)) throw new TimeoutException("No se pudo detener el analizador");
-                client.closeChecked(); cleanup.complete(null);
+                try { if (archive != null) archive.finish("cancelled"); }
+                finally { client.closeChecked(); }
+                cleanup.complete(null);
             } catch (Exception error) { cleanup.completeExceptionally(error); }
         }, "dungeonmice-frame-close"); thread.setDaemon(true); thread.start();
         return cleanup;

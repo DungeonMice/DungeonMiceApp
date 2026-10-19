@@ -16,8 +16,9 @@ public final class ActivityLog extends VBox {
         public final boolean error;
         public final double seconds;
         public final int frame;
+        public final String archive;
         public Entry(String time, String text, boolean error) {
-            this.time = time; this.text = bounded(text); this.error = error; this.frame = 0;
+            this.time = time; this.text = bounded(text); this.error = error; this.frame = 0; this.archive = null;
             double parsed = Double.NaN;
             if (time != null && time.matches("\\d+:[0-5]\\d:[0-5]\\d\\.\\d{3}")) {
                 String[] parts = time.split(":");
@@ -27,15 +28,19 @@ public final class ActivityLog extends VBox {
             this.seconds = parsed;
         }
         public Entry(double seconds, int frame, String text, boolean error) {
+            this(seconds, frame, text, error, null);
+        }
+        public Entry(double seconds, int frame, String text, boolean error, String archive) {
             if (!Double.isFinite(seconds) || seconds < 0 || frame < 0) throw new IllegalArgumentException("Marca de tiempo invalida");
-            this.seconds = seconds; this.frame = frame; this.text = bounded(text); this.error = error;
+            this.seconds = seconds; this.frame = frame; this.text = bounded(text); this.error = error; this.archive = archive;
             this.time = PlaybackPane.format(javafx.util.Duration.seconds(seconds));
         }
         public com.google.gson.JsonObject toJson() {
             com.google.gson.JsonObject data = new com.google.gson.JsonObject();
-            data.addProperty("seconds", seconds); data.addProperty("frame", frame); data.addProperty("text", text); data.addProperty("error", error); return data;
+            data.addProperty("seconds", seconds); data.addProperty("frame", frame); data.addProperty("text", text); data.addProperty("error", error);
+            if (archive != null) data.addProperty("archive", archive); return data;
         }
-        public static Entry fromJson(com.google.gson.JsonObject data) { return new Entry(data.get("seconds").getAsDouble(), data.get("frame").getAsInt(), data.get("text").getAsString(), data.get("error").getAsBoolean()); }
+        public static Entry fromJson(com.google.gson.JsonObject data) { return new Entry(data.get("seconds").getAsDouble(), data.get("frame").getAsInt(), data.get("text").getAsString(), data.get("error").getAsBoolean(), data.has("archive") ? data.get("archive").getAsString() : null); }
         private static String bounded(String text) { java.util.Objects.requireNonNull(text); return text.length() <= 4000 ? text : text.substring(0, 4000); }
         @Override public String toString() { return time + (frame > 0 ? "  |  Frame " + frame : "") + "  " + text; }
     }
@@ -86,7 +91,7 @@ public final class ActivityLog extends VBox {
     public static void append(ObservableList<Entry> history, Entry entry) {
         if (!history.isEmpty()) {
             Entry last = history.get(history.size() - 1);
-            if (last.text.equals(entry.text) && last.seconds == entry.seconds && last.frame == entry.frame && last.error == entry.error) return;
+            if (last.text.equals(entry.text) && last.seconds == entry.seconds && last.frame == entry.frame && last.error == entry.error && java.util.Objects.equals(last.archive, entry.archive)) return;
         }
         history.add(entry); if (history.size() > MAX_ENTRIES) history.remove(0, history.size() - MAX_ENTRIES);
     }
