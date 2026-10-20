@@ -24,7 +24,7 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
     private final Label status = new Label("Conectando analisis por frames...");
     private final Label clock = new Label();
     private final Slider timeline = new Slider();
-    private final ProgressIndicator loading = new ProgressIndicator();
+    private final LoadingAnimation loading = new LoadingAnimation(112);
     private final HBox controls = new HBox(6);
     private final StackPane viewport = new StackPane(image, loading, status);
     private final TabPane viewTabs = new TabPane();
@@ -58,7 +58,8 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
         image.fitWidthProperty().bind(viewport.widthProperty().subtract(2)); image.fitHeightProperty().bind(viewport.heightProperty().subtract(2));
         viewport.getStyleClass().add("playback-viewport"); viewport.setMinSize(0, 180); VBox.setVgrow(viewport, Priority.ALWAYS);
         Rectangle clip = new Rectangle(); clip.widthProperty().bind(viewport.widthProperty()); clip.heightProperty().bind(viewport.heightProperty()); clip.setArcWidth(16); clip.setArcHeight(16); viewport.setClip(clip);
-        loading.setMaxSize(32, 32); loading.setId("frame-loading"); status.getStyleClass().add("playback-status"); status.setWrapText(true); status.setMaxWidth(400); status.setId("frame-status");
+        loading.setId("frame-loading"); StackPane.setAlignment(loading, Pos.BOTTOM_RIGHT); StackPane.setMargin(loading, new Insets(10));
+        status.getStyleClass().add("playback-status"); status.setWrapText(true); status.setMaxWidth(400); status.setId("frame-status");
         viewport.setOnScroll(event -> { setZoom(zoom * (event.getDeltaY() > 0 ? 1.12 : 1 / 1.12)); event.consume(); });
         viewport.setOnMousePressed(event -> { mouseX = event.getSceneX(); mouseY = event.getSceneY(); });
         viewport.setOnMouseDragged(event -> {

@@ -22,7 +22,7 @@ public final class ReportPane extends BorderPane {
     private final TableView<List<String>> table = new TableView<>();
     private final Label status = new Label();
     private final Button excel = new Button("Guardar Excel"), pdf = new Button("Exportar PDF");
-    private final ProgressIndicator progress = new ProgressIndicator();
+    private final LoadingAnimation progress = new LoadingAnimation(76);
     private long generation;
 
     public ReportPane(Stage stage, List<Video> sources, ExecutorService worker) {
@@ -37,7 +37,7 @@ public final class ReportPane extends BorderPane {
         });
         for (ComboBox<?> box : new ComboBox<?>[]{videos, reports, sheets}) { box.setMaxWidth(Double.MAX_VALUE); box.setMinWidth(80); HBox.setHgrow(box, Priority.ALWAYS); }
         videos.setPromptText("Video"); reports.setPromptText("Analisis"); sheets.setPromptText("Hoja");
-        progress.setMaxSize(24, 24); progress.setVisible(false); progress.managedProperty().bind(progress.visibleProperty());
+        progress.setId("report-loading"); progress.setVisible(false); progress.managedProperty().bind(progress.visibleProperty());
         Button refresh = new Button("Actualizar"); refresh.setId("report-refresh"); refresh.setOnAction(event -> load());
         for (Button button : new Button[]{excel, pdf, refresh}) { button.getStyleClass().add(button == pdf ? "primary" : "outline"); button.setPrefWidth(150); }
         HBox filters = new HBox(10, videos, reports, sheets); HBox actions = new HBox(10, excel, pdf, refresh, progress);

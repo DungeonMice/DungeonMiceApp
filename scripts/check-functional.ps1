@@ -21,6 +21,8 @@ try {
     $testRepository = Join-Path $env:USERPROFILE '.m2\repository'
     $testFx = (Get-ChildItem -LiteralPath (Join-Path $testRepository 'org\openjfx') -Recurse -Filter '*17.0.10-win.jar').FullName -join ';'
     $testClasspath = "target/classes;target/test-classes;target/runtime-libs/*"
+    & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.LoadingAnimationChecks
+    if ($LASTEXITCODE -ne 0) { throw 'Animated loading checks failed.' }
     & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.FunctionalChecks target/fixtures/test.mp4 target/fixtures/test.avi
     if ($LASTEXITCODE -ne 0) { throw 'Functional checks failed.' }
     & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.RegionEditorChecks target/fixtures/test.mp4

@@ -28,7 +28,7 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
     private String highlighted;
     private final javafx.beans.property.BooleanProperty videoReady = new javafx.beans.property.SimpleBooleanProperty(false);
     private final Label status = new Label("Selecciona un video");
-    private final ProgressIndicator loading = new ProgressIndicator();
+    private final LoadingAnimation loading = new LoadingAnimation(160);
     private final Label clock = new Label("00:00:00.000");
     private final Slider timeline = new Slider();
     private final Slider volume = new Slider(0, 1, .5);
@@ -56,7 +56,9 @@ public final class PlaybackPane extends VBox implements AutoCloseable {
                 view.relocate((getWidth() - fitWidth) / 2, (getHeight() - fitHeight) / 2);
                 regions.setWidth(getWidth()); regions.setHeight(getHeight()); drawRegions();
                 status.autosize(); status.relocate((getWidth() - status.getWidth()) / 2, (getHeight() - status.getHeight()) / 2);
-                loading.resizeRelocate((getWidth() - 32) / 2, getHeight() / 2 - 50, 32, 32);
+                double loaderHeight = Math.min(74, getHeight() * .3), loaderWidth = loaderHeight * 320 / 148;
+                loading.resizeRelocate((getWidth() - loaderWidth) / 2,
+                        Math.max(4, (getHeight() - status.getHeight()) / 2 - loaderHeight - 10), loaderWidth, loaderHeight);
             }
         };
         viewport.setId("playback-viewport");

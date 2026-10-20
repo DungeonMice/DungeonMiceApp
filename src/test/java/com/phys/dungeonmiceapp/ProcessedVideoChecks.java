@@ -67,7 +67,7 @@ public final class ProcessedVideoChecks extends Application {
     @SuppressWarnings("unchecked") private ListView<ProcessedVideo> results() { return (ListView<ProcessedVideo>) workspace.lookup("#processed-list"); }
     private void checkLibrary() {
         check(results().getItems().size() == 2 && results().getSelectionModel().getSelectedItem().getId().equals(latest.getId()), "Processed page selects latest result");
-        check(!((ProgressIndicator) player().lookup("#video-loading")).isVisible(), "Video loading indicator hides when ready"); snapshot("processed-1440x900.png");
+        check(!player().lookup("#video-loading").isVisible(), "Video loading indicator hides when ready"); snapshot("processed-1440x900.png");
         @SuppressWarnings("unchecked") ListView<ActivityLog.Entry> logs = (ListView<ActivityLog.Entry>) workspace.lookup("#activity-log");
         check(logs != null && logs.getItems().get(0).time.equals("00:00:02.000") && logs.getItems().get(0).frame == 60, "Processed results display their source's saved time and frame");
         css();
