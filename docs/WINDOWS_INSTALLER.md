@@ -60,7 +60,10 @@ processing, all three views, bounded cache, lifecycle, missing-payload failure,
 unchanged original video and no writes to the installation tree. Use
 `-Experiment CrossMaze -VideoDirectory 'C:\path\to\CrossMaze'` for the other engine.
 
-The default build version on `flag` is 1.0.7; use `-Version` for a subsequent release.
+The default build version on `flag` is 1.0.8; use `-Version` for a subsequent release.
+Enter submits login from either credential field. Completed frame analyses retain
+their native Excel/PNG reports, visible under Datos with Excel and PDF exports.
+The PDF uses the same native workbook results, without analyzing the video again.
 This version fixes title-bar picking before login and uses system FFmpeg's libx264
 encoder for optional MP4 export, instead of requiring an OpenCV H.264 encoder.
 This release includes persistent event frame markers for review after analysis;

@@ -135,7 +135,10 @@ public final class FramePlaybackPane extends VBox implements AutoCloseable {
                     if (frame != null && index < 0) saved.addAll(archive.capture(frame));
                     else if (frame == null) {
                         if (processed != total) throw new java.io.IOException("El analisis termino antes del ultimo frame");
+                        Platform.runLater(() -> { if (!closed) message.set("Generando reportes..."); });
+                        archive.saveReports(client.reports());
                         if (currentFrame != null) saved.add(archive.mark(currentFrame, "Analisis por frames completado: " + processed + " frames", false));
+                        saved.add(new ActivityLog.Entry(seconds, shown, "Reportes Excel y PDF disponibles en Datos", false));
                         archive.finish("completed");
                     }
                 }

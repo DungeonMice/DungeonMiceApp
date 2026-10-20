@@ -197,7 +197,7 @@ def build(args):
                 for source, relative in engine:
                     bundle.file("backend/" + relative, source)
                 bundle.file("backend/engine/LICENSE.txt", project / "LICENSE.txt")
-                for name in ("DungeonMice", "instalar.sh", "setup.sh", "install-dependencies.sh", "check-linux.sh"):
+                for name in ("DungeonMice", "instalar.sh", "desinstalar.sh", "setup.sh", "install-dependencies.sh", "check-linux.sh"):
                     bundle.file(name, ROOT / "scripts/linux" / name, executable=True)
                 for name in ("setup-linux.py", "check-linux.py"):
                     bundle.file(name, ROOT / "scripts/linux" / name)
@@ -224,7 +224,7 @@ def build(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", default="1.0.7")
+    parser.add_argument("--version", default="1.0.8")
     parser.add_argument("--python-project", type=Path, default=ROOT.parent / "DungeonMice")
     parser.add_argument("--output", type=Path, default=ROOT / "dist/linux")
     cache_root = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".cache")))

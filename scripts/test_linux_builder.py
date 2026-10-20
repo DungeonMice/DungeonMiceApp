@@ -90,6 +90,33 @@ class LinuxBuilderChecks(unittest.TestCase):
             self.assertEqual((destination / "app/version").read_text(), "new")
             self.assertEqual(list(destination.parent.glob(".dungeon-mice-install-*")), [])
 
+    def test_uninstall_removes_only_owned_program_and_menu(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            installed = self.bundle_fixture(base / "dungeon-mice-app")
+            shortcut = base / "applications/dungeon-mice.desktop"
+            shortcut.parent.mkdir(); shortcut.write_text("X-DungeonMice-Managed=true")
+            data = base / "DungeonMice/data/database.enc"
+            data.parent.mkdir(parents=True); data.write_bytes(b"preserve")
+            reports = base / "DungeonMice/events/report.xlsx"
+            reports.parent.mkdir(); reports.write_bytes(b"report")
+            setup.uninstall_bundle(base)
+            self.assertFalse(installed.exists()); self.assertFalse(shortcut.exists())
+            self.assertEqual(data.read_bytes(), b"preserve"); self.assertEqual(reports.read_bytes(), b"report")
+            setup.uninstall_bundle(base)
+
+    def test_uninstall_refuses_foreign_files_or_shortcut(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            installed = self.bundle_fixture(base / "dungeon-mice-app")
+            foreign = installed / "personal-video.avi"; foreign.write_bytes(b"preserve")
+            with self.assertRaises(ValueError): setup.uninstall_bundle(base)
+            self.assertTrue(foreign.exists()); foreign.unlink()
+            shortcut = base / "applications/dungeon-mice.desktop"
+            shortcut.parent.mkdir(); shortcut.write_text("foreign application")
+            with self.assertRaises(ValueError): setup.uninstall_bundle(base)
+            self.assertTrue(installed.exists()); self.assertEqual(shortcut.read_text(), "foreign application")
+
     def test_foreign_destination_and_extra_user_files_are_preserved(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

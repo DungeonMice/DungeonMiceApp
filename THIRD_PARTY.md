@@ -15,6 +15,10 @@ The native VLC libraries have their own licenses; see https://www.videolan.org/l
 
 # Linux Runtime Bundle
 
+PDF exports use Apache PDFBox, FontBox and PDFBox IO under Apache License 2.0,
+with Apache Commons Logging. Their license/notice resources are retained in the
+shaded application JAR. Project: https://pdfbox.apache.org/.
+
 The Linux tarball separately includes Eclipse Temurin Java 17 (including its
 legal notices), Astral python-build-standalone and Linux dependency wheels.
 Pinned URLs/hashes are in `scripts/linux-bundle-lock.json`. Runtime archive

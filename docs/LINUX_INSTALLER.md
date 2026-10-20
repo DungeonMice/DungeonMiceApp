@@ -13,10 +13,10 @@ required; the cross-platform builder cannot execute Linux programs on Windows.
 
 ## Single-File Installer
 
-Copy `DungeonMice-1.0.7-linux-x86_64.run` to the Linux computer and run:
+Copy `DungeonMice-1.0.8-linux-x86_64.run` to the Linux computer and run:
 
 ```sh
-sh DungeonMice-1.0.7-linux-x86_64.run
+sh DungeonMice-1.0.8-linux-x86_64.run
 ```
 
 Run it as your normal user, without sudo. It verifies and extracts its own
@@ -31,7 +31,7 @@ available for portable use or manual extraction; you do not need both downloads.
 Extract on Linux so permissions and symbolic links are preserved:
 
 ```sh
-tar -xzf DungeonMice-1.0.7-linux-x86_64.tar.gz
+tar -xzf DungeonMice-1.0.8-linux-x86_64.tar.gz
 cd DungeonMice
 ./instalar.sh
 ```
@@ -62,9 +62,21 @@ Alternatively, run the extracted folder without copying it:
 
 In that portable mode, the shortcut points to the extracted folder; keep it at
 the same location. The one-script install uses its own permanent program folder.
-To remove the shortcut, use `./setup.sh --uninstall`. Then remove only the
-extracted application folder when no longer needed. User data and external
-source videos are kept separately and are not removed by setup/uninstall.
+## Uninstall on Debian/Ubuntu
+
+Close Dungeon Mice, then run as the same user who installed it, without sudo:
+
+```sh
+sh "${XDG_DATA_HOME:-$HOME/.local/share}/dungeon-mice-app/desinstalar.sh"
+```
+
+You can also run `sh desinstalar.sh` from the newly extracted tarball. Confirm
+the prompt, or add `--yes` for unattended removal. The uninstaller removes only
+the validated installed program directory and its managed application-menu entry.
+It refuses foreign files, symlink destinations and an active application/backend.
+Databases, profile photos, event snapshots, reports and original videos remain.
+Shared VLC/FFmpeg/system libraries are not removed. An extracted portable folder
+is not automatically deleted. `./setup.sh --uninstall` invokes the same removal.
 
 ## Verify on Linux
 
@@ -107,12 +119,12 @@ their Unix executable permissions and relative links preserved. No Linux native
 code is executed during a Windows build. Output and checksum:
 
 ```
-dist/linux/DungeonMice-1.0.7-linux-x86_64.tar.gz
-dist/linux/DungeonMice-1.0.7-linux-x86_64.tar.gz.sha256
-dist/linux/DungeonMice-1.0.7-linux-x86_64.run
+dist/linux/DungeonMice-1.0.8-linux-x86_64.tar.gz
+dist/linux/DungeonMice-1.0.8-linux-x86_64.tar.gz.sha256
+dist/linux/DungeonMice-1.0.8-linux-x86_64.run
 ```
 
-Use `--version 1.0.8` for another version or `--force` to explicitly replace an
+Use `--version 1.0.9` for another version or `--force` to explicitly replace an
 existing archive of the same version. Use `--cache`, `--output`, `--java-home`
 and `--python-project` to override builder locations. Downloads remain in a
 per-user build cache; source videos and personal databases are never scanned

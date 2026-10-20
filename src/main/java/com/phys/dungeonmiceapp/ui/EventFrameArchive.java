@@ -31,7 +31,7 @@ public final class EventFrameArchive {
         manifest.addProperty("state", "running"); saveManifest();
     }
 
-    private static Path location(String owner, String video, String run) {
+    static Path location(String owner, String video, String run) {
         for (String key : Arrays.asList(owner, video, run))
             if (key == null || !key.matches("[A-Za-z0-9_-]{1,80}")) throw new IllegalArgumentException("Identificador de archivo de eventos invalido");
         String root = System.getProperty("dungeonmice.events.directory");
@@ -81,6 +81,10 @@ public final class EventFrameArchive {
         if (finished) return;
         manifest.addProperty("state", state); manifest.addProperty("finishedAt", java.time.Instant.now().toString());
         saveManifest(); finished = true;
+    }
+
+    public void saveReports(byte[] packet) throws IOException {
+        AnalysisReports.store(directory.resolve("reports"), packet);
     }
 
     private void saveManifest() throws IOException { writeAtomic(directory.resolve("markers.json"), manifest.toString().getBytes(StandardCharsets.UTF_8)); }

@@ -214,6 +214,8 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     }
 
     private Node login() {
+        loginName.setOnAction(event -> loginUser());
+        loginPassword.setOnAction(event -> loginUser());
         VBox form = new VBox(); form.setAlignment(Pos.CENTER); form.setMaxWidth(220); form.setTranslateY(-28);
         VBox fields = new VBox(7, new Label("Nombre de usuario"), loginName, gap(7), new Label("Contrase\u00f1a"), loginPassword);
         fields.setMaxWidth(200);
@@ -1022,15 +1024,7 @@ public final class WorkspaceView extends BorderPane implements AutoCloseable {
     }
 
     private Node data() {
-        TableView<Video> table = new TableView<>(); table.setPlaceholder(new Label("No hay videos en el proyecto"));
-        for (String name : new String[]{"Video", "Proyecto", "Archivo"}) {
-            TableColumn<Video, String> column = new TableColumn<>(name);
-            column.setCellValueFactory(cell -> new javafx.beans.property.SimpleStringProperty(name.equals("Video") ? cell.getValue().getTitle()
-                    : name.equals("Proyecto") ? (selectedProject == null ? "" : selectedProject.getName()) : cell.getValue().getFilePath())); table.getColumns().add(column);
-        }
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        if (selectedProject != null) table.getItems().setAll(VideoRepository.findByGroup(selectedProject.getId()));
-        VBox page = new VBox(25, identity(), heading("Datos", true), table); page.setPadding(new Insets(25, 35, 35, 35)); VBox.setVgrow(table, Priority.ALWAYS); return page;
+        return new ReportPane(stage, selectedProject == null ? Collections.emptyList() : VideoRepository.findByGroup(selectedProject.getId()), files);
     }
 
     private void choosePhoto() {

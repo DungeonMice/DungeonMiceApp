@@ -1,4 +1,4 @@
-param([string]$Version = '1.0.7', [string]$BuildPython = 'C:\Python314\python.exe', [string]$PythonProject = '')
+param([string]$Version = '1.0.8', [string]$BuildPython = 'C:\Python314\python.exe', [string]$PythonProject = '')
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $BuildPython)) { $BuildPython = (Get-Command python.exe -ErrorAction Stop).Source }
 $arguments = @('-B', (Join-Path $PSScriptRoot 'build-linux.py'), '--version', $Version)

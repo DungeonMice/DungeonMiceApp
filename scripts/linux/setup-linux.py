@@ -10,7 +10,7 @@ import tempfile
 
 PAYLOAD = ("DungeonMice", "DungeonMice.png", "runtime", "backend", "app", "bundle-manifest.json",
            "README.md", "LICENSE", "THIRD_PARTY.md", "setup.sh", "setup-linux.py", "check-linux.sh",
-           "check-linux.py", "install-dependencies.sh", "instalar.sh")
+           "check-linux.py", "install-dependencies.sh", "instalar.sh", "desinstalar.sh")
 
 
 def validate_bundle(root):
@@ -75,11 +75,43 @@ def desktop_escape(value):
     return quoted.replace("\\", "\\\\")
 
 
+def uninstall_bundle(base):
+    base = Path(base).resolve()
+    destination = base / "dungeon-mice-app"
+    shortcut = base / "applications/dungeon-mice.desktop"
+    if destination.is_symlink():
+        raise ValueError("La instalacion no puede ser un enlace simbolico")
+    if destination.exists():
+        validate_bundle(destination)
+        if any(item.name not in PAYLOAD for item in destination.iterdir()):
+            raise ValueError("Hay archivos ajenos al programa; muevelos fuera antes de desinstalar")
+        # Never remove an installation while its Java app/backend is still running.
+        for command in Path("/proc").glob("[0-9]*/cmdline"):
+            if command.parent.name == str(os.getpid()):
+                continue
+            try:
+                raw = command.read_bytes()
+                if os.fsencode(str(destination)) in raw and any(name in raw for name in (b"DungeonMiceApp", b"dungeonmice_api_bridge", b"python_bootstrap.py")):
+                    raise ValueError("Cierra Dungeon Mice antes de desinstalar")
+            except (PermissionError, ProcessLookupError, FileNotFoundError):
+                continue
+    if shortcut.is_symlink():
+        raise ValueError("El acceso del menu no puede ser un enlace simbolico")
+    if shortcut.exists() and "X-DungeonMice-Managed=true" not in shortcut.read_text(encoding="utf-8"):
+        raise ValueError("El acceso del menu no pertenece a este setup")
+    if destination.exists():
+        shutil.rmtree(destination)
+    shortcut.unlink(missing_ok=True)
+    print("Dungeon Mice desinstalado. Se conservan bases de datos, reportes, capturas y videos.")
+    print("VLC, FFmpeg y las dependencias compartidas no se desinstalaron.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Acceso directo de Dungeon Mice")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--install", action="store_true", help="Instalar dependencias, programa y acceso al menu")
-    mode.add_argument("--uninstall", action="store_true", help="Quitar el acceso del menu; conservar todos los datos")
+    mode.add_argument("--uninstall", action="store_true", help="Desinstalar programa y acceso del menu; conservar datos")
+    parser.add_argument("--yes", action="store_true", help="Confirmar la desinstalacion sin preguntar")
     args = parser.parse_args()
     if sys.platform != "linux":
         parser.error("Ejecuta este setup en Linux")
@@ -93,10 +125,12 @@ def main():
     if target.exists() and "X-DungeonMice-Managed=true" not in target.read_text(encoding="utf-8"):
         parser.error("El acceso existente no pertenece a este setup")
     if args.uninstall:
-        if target.exists() and "X-DungeonMice-Managed=true" not in target.read_text(encoding="utf-8"):
-            parser.error("El acceso existente no pertenece a este setup")
-        target.unlink(missing_ok=True)
-        print("Acceso del menu eliminado. La carpeta del programa y los datos se conservan.")
+        if os.geteuid() == 0:
+            parser.error("Ejecuta desinstalar.sh sin sudo, con el mismo usuario que instalo la app")
+        if not args.yes and input("Desinstalar Dungeon Mice y conservar los datos? [s/N]: ").strip().casefold() not in {"s", "si"}:
+            print("Desinstalacion cancelada.")
+            return
+        uninstall_bundle(base)
         return
     if args.install:
         if os.geteuid() == 0:

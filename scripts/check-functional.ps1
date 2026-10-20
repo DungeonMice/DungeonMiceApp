@@ -31,6 +31,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Window controls checks failed.' }
     & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.WindowControlsChecks --native-close
     if ($LASTEXITCODE -ne 0) { throw 'Native close checks failed.' }
+    & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.LoginEnterChecks
+    if ($LASTEXITCODE -ne 0) { throw 'Password Enter login checks failed.' }
+    & $JavaPath --module-path $testFx --add-modules javafx.controls,javafx.fxml,javafx.media -cp $testClasspath com.phys.dungeonmiceapp.LoginEnterChecks --username
+    if ($LASTEXITCODE -ne 0) { throw 'Username Enter login checks failed.' }
     # Native pointer events exercise scene picking, including translated login forms.
     foreach ($screen in @('login', 'register')) {
         foreach ($size in @('compact', 'large')) {

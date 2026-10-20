@@ -406,3 +406,27 @@ https://ffmpeg.org/ffmpeg-formats.html#rawvideo and
 https://ffmpeg.org/ffmpeg-codecs.html#libx264_002c-libx264rgb.
 `scripts/test_mp4_encoder.py` verifies real H.264/AAC output, dimensions, frame
 count and decoded pixels while OpenCV's VideoWriter is unavailable.
+
+## Persistent Frame Analysis Reports (1.0.8)
+
+Once a frame session reaches EOF after every expected frame, its authenticated
+`GET /api/v1/frame-sessions/{id}/reports` endpoint calls the unchanged native
+labyrinth's `process_video` writer with accumulated scientific state. It does not
+reanalyze frames. Native XLSX and trajectory/heatmap PNGs are generated in an owned
+temporary directory, never beside the source video or in the Python checkout.
+The adapter supplies workbook values in `report.json` for the Java preview/PDF.
+Requests before completion are rejected. Repeated retrieval returns the same ZIP.
+
+Before closing the session, Java securely extracts the bounded report ZIP under
+the event run's `reports` folder, then publishes the completed run. The Datos tab
+lists completed reports per video/user, previews sheets, saves the original XLSX
+and exports a paginated PDF with native data and plots using Apache PDFBox.
+Reports remain accessible after Python exits or Java restarts. This applies to
+individual frame analysis and every completed item in a frame batch. Interrupted
+or failed runs do not publish complete reports. Old analyses must be rerun because
+their native Excel and trajectory state were not retained by previous versions.
+Optional legacy MP4 API exports still return the MP4 only.
+
+`NativeReportChecks` runs real native analysis, verifies report gating/persistence,
+owner isolation, PDF contents/rendering and unchanged source videos. `ReportUiChecks`
+checks the saved native workbook in compact/desktop UI without a Python connection.

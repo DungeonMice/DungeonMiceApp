@@ -3,6 +3,9 @@ import collections
 import io
 import os
 import struct
+import tempfile
+from pathlib import Path
+import zipfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -14,6 +17,7 @@ class FrameSessionChecks(unittest.TestCase):
         session = frames.Session.__new__(frames.Session)
         session.id = "a" * 32
         session.count = session.bytes = 0
+        session.completed = False
         session.cache = collections.OrderedDict()
         session.analyzer = Mock()
         session.analyzer._cache = []
@@ -66,6 +70,35 @@ class FrameSessionChecks(unittest.TestCase):
         session.analyzer.next.return_value = None
         self.assertIsNone(session.next())
         self.assertEqual(session.count, 0)
+
+    def test_reports_require_completion(self):
+        with self.assertRaisesRegex(ValueError, "finalizar"):
+            self.session().reports()
+
+    def test_native_workbook_is_preserved_without_writes_next_to_source(self):
+        from openpyxl import Workbook
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "original.avi"; source.write_bytes(b"unchanged")
+            session = self.session(); session.completed = True; session.report_packet = None
+            session.report_workspace = None; session.source = source; session.kind = "MorrisPool"; session.first_frame = object()
+            session.analyzer.fps = 30; session.count = 60
+            def write_results(**args):
+                target = Path(next(iter(args["all_video_paths"].values()))).parent
+                self.assertNotEqual(target, source.parent)
+                book = Workbook(); book.active.append(["Native metric", 3.5]); book.save(target / "results.xlsx")
+            writer = Mock(side_effect=write_results)
+            session.analyzer._labyrinth = SimpleNamespace(trajectory_x=[1], trajectory_y=[2], start_time=0, process_video=writer)
+            packet = session.reports()
+            self.assertEqual(packet, session.reports()); writer.assert_called_once()
+            with zipfile.ZipFile(io.BytesIO(packet)) as archive:
+                self.assertIn("results.xlsx", archive.namelist())
+                import json
+                data = json.loads(archive.read("report.json"))
+                self.assertEqual(data["sheets"][0]["rows"][0], ["Native metric", "3.5"])
+            owned = Path(session.report_workspace.name); session.close()
+            self.assertFalse(owned.exists()); self.assertEqual(source.read_bytes(), b"unchanged")
+            self.assertEqual(list(root.iterdir()), [source])
 
     def test_unauthenticated_path_api_does_not_open_source(self):
         handler = Mock(path="/api/v1/frame-sessions", headers={}, command="POST")

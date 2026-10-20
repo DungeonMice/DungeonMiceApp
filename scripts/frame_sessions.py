@@ -1,6 +1,8 @@
 """Demand-driven frame adapter. No changes or video outputs in the Python project."""
 import collections
 import hmac
+import copy
+import io
 import json
 import math
 import os
@@ -11,6 +13,7 @@ import sys
 import tempfile
 import threading
 import time
+import zipfile
 from experiment_config import select_config, validate_frame_regions
 
 LOCK = threading.RLock()
@@ -31,6 +34,10 @@ class Session:
         from input_loader import load_experiment
         from RunExperiment_per_frame import VideoAnalyzer
         source = Path(request["sourcePath"]).resolve(strict=True)
+        self.source = source
+        self.report_workspace = None
+        self.report_packet = None
+        self.completed = False
         if not source.is_file() or source.suffix.lower() not in {".mp4", ".mov", ".avi", ".mkv", ".m4v"}:
             raise ValueError("Video original no disponible")
         regions = normalize(request["regions"])
@@ -43,6 +50,9 @@ class Session:
             if not capture.isOpened() or self.width <= 0 or self.height <= 0:
                 raise ValueError("No se pudo abrir el video original")
             validate_frame_regions(regions, self.width, self.height)
+            ok, self.first_frame = capture.read()
+            if not ok:
+                raise ValueError("No se pudo leer el primer frame")
         finally:
             capture.release()
         config = select_config(options, regions)
@@ -76,6 +86,7 @@ class Session:
     def next(self):
         data = self.analyzer.next()
         if data is None:
+            self.completed = self.count == self.analyzer.total_frames
             return None
         # The pulled engine otherwise retains every full-resolution BGR image.
         # Keep tracker state intact, but own only a bounded compressed preview window.
@@ -106,12 +117,55 @@ class Session:
             self.bytes -= len(old)
         return packet
 
+    def reports(self):
+        if not self.completed:
+            raise ValueError("Los reportes estan disponibles al finalizar el analisis completo")
+        if self.report_packet is not None:
+            return self.report_packet
+        from openpyxl import load_workbook
+        self.report_workspace = tempfile.TemporaryDirectory(prefix="dungeonmice-reports-")
+        folder = Path(self.report_workspace.name)
+        labyrinth = self.analyzer._labyrinth
+        name = re.sub(r'[\[\]:*?/\\]', '_', self.source.stem)[:31] or "video"
+        # The original writer derives output paths from this map. Use an isolated
+        # directory, never the source video directory or a process-wide chdir.
+        labyrinth.process_video(
+            all_results={name: copy.deepcopy(self.analyzer._logic.states)},
+            all_trajectories={name: (labyrinth.trajectory_x, labyrinth.trajectory_y)},
+            all_video_paths={name: str(folder / self.source.name)},
+            all_first_frames={name: self.first_frame},
+            all_start_times={name: labyrinth.start_time},
+            all_recording_durations={name: max(0, self.count / self.analyzer.fps - labyrinth.start_time)})
+        files = sorted(folder.glob("*.xlsx"))
+        if len(files) != 1:
+            raise ValueError("Python no genero el reporte Excel esperado")
+        workbook = load_workbook(files[0], data_only=True, read_only=True)
+        try:
+            sheets = []
+            for sheet in workbook:
+                rows = [[str(cell) if cell is not None else "" for cell in row] for row in sheet.iter_rows(values_only=True)]
+                sheets.append(dict(name=sheet.title, rows=rows))
+        finally:
+            workbook.close()
+        metadata = dict(version=1, sourceName=self.source.name, frames=self.count,
+                        fps=self.analyzer.fps, experiment=self.kind, workbook=files[0].name, sheets=sheets)
+        (folder / "report.json").write_text(json.dumps(metadata, ensure_ascii=False), encoding="utf-8")
+        packet = io.BytesIO()
+        with zipfile.ZipFile(packet, "w", zipfile.ZIP_DEFLATED) as archive:
+            for file in sorted(folder.iterdir()):
+                if file.suffix in {".xlsx", ".png", ".json"}:
+                    archive.write(file, file.name)
+        self.report_packet = packet.getvalue()
+        return self.report_packet
+
     def close(self):
         try:
             self.analyzer.release()
         finally:
             self.cache.clear()
             self.bytes = 0
+            if getattr(self, "report_workspace", None) is not None:
+                self.report_workspace.cleanup()
 
 
 def close_all(slot):
@@ -140,7 +194,7 @@ def handle(handler, options, normalize, slot, stopping):
     if not token or not hmac.compare_digest(token, handler.headers.get("X-DungeonMice-Token", "")):
         handler.reply(403, {"error": "Frame API requires the local application token"})
         return True
-    match = re.fullmatch(r"/api/v1/frame-sessions/([a-f0-9]{32})(?:/(next|[0-9]+))?", handler.path)
+    match = re.fullmatch(r"/api/v1/frame-sessions/([a-f0-9]{32})(?:/(next|reports|[0-9]+))?", handler.path)
     try:
         handler.connection.settimeout(30)
         with LOCK:
@@ -172,6 +226,15 @@ def handle(handler, options, normalize, slot, stopping):
                 action = match.group(2)
                 if action is None:
                     handler.reply(200, SESSION.info())
+                elif action == "reports":
+                    packet = SESSION.reports()
+                    handler.send_response(200)
+                    handler.send_header("Content-Type", "application/zip")
+                    handler.send_header("Content-Length", str(len(packet)))
+                    handler.send_header("Connection", "close")
+                    handler.end_headers()
+                    handler.wfile.write(packet)
+                    handler.close_connection = True
                 else:
                     packet = SESSION.next() if action == "next" else SESSION.cache.get(int(action))
                     if packet is None:

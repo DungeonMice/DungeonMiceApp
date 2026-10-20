@@ -80,6 +80,14 @@ public final class PythonFrameClient implements AutoCloseable {
         catch (RuntimeException ignored) { }
         return new IOException("Python (HTTP " + code + "): " + detail);
     }
+    public byte[] reports() throws IOException, InterruptedException {
+        HttpRequest call = request("api/v1/frame-sessions/" + id + "/reports").timeout(Duration.ofMinutes(3)).GET().build();
+        try (InputStream input = send(call, 200)) {
+            byte[] packet = input.readNBytes(64 * 1024 * 1024 + 1);
+            if (packet.length == 0 || packet.length > 64 * 1024 * 1024) throw new IOException("Reporte demasiado grande o vacio");
+            return packet;
+        }
+    }
     public void closeChecked() throws IOException, InterruptedException {
         closed = true;
         HttpResponse<InputStream> reply = http.send(request("api/v1/frame-sessions/" + id).DELETE().build(), HttpResponse.BodyHandlers.ofInputStream());
